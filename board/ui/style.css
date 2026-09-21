@@ -1,0 +1,1202 @@
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono-latin.woff2') format('woff2');
+}
+
+:root {
+  --bg: #0b0b0c;
+  --fg: #f4f2ef;
+  --muted: #8d8a85;
+  --accent: #ff5227;
+  --hair: rgba(244, 242, 239, 0.085);
+  --hair-lit: rgba(244, 242, 239, 0.2);
+  /* Attention without urgency. The accent is already spoken for three times
+     over — priority, unread, focus — so a fourth meaning on it would leave the
+     eye no way to tell 'urgent' from 'not ready'. */
+  --warn: #d8a13c;
+  /* The gate's two outcomes. Neither is the accent: a failure wearing the same
+     colour as 'priority' and 'unread' would leave all three meaning nothing. */
+  --ok: #5f9e6e;
+  --fail: #c1554e;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pad: clamp(1rem, 2.5vw, 2rem);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The type scale. Every size below is rem, so this one line IS the scale: 112.5%
+   of the browser default is 18px. A percentage rather than 18px so a reader who
+   raises their browser's default type gets the ratio, not a pin. The two layout
+   widths that must grow with it (.column, #panel) are rem for the same reason;
+   hairlines stay 1px because a hairline is a hairline at any size. Pinned by
+   test/type-scale.test.js; the why is docs/specs/2026-09-04-type-scale-design.md. */
+html {
+  font-size: 112.5%;
+}
+
+body {
+  margin: 0;
+  /* ONE inherited declaration, not a per-element list. A pasted URL in a card
+     title is one unbreakable token of 40-70 characters and a column fits about
+     35, so without this the title runs past the card edge (seen live 2026-09-04
+     and 2026-09-06). The snapshot fixed the same defect on 2026-08-24 this way,
+     after a per-element list missed four selectors. "anywhere" rather than
+     "break-word" because only anywhere shrinks a box's min-content size, and the
+     metadata rows are flex containers whose items would otherwise refuse to
+     shrink below their longest word. Pinned by test/wrap.test.js. */
+  overflow-wrap: anywhere;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Mono uppercase micro-label — every piece of metadata in the interface. */
+.micro {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.micro.dim {
+  opacity: 0.6;
+}
+
+/* ---- Chrome ------------------------------------------------------------- */
+
+#chrome {
+  flex: 0 0 auto;
+  padding: var(--pad) var(--pad) 0;
+  border-bottom: 1px solid var(--hair);
+}
+#chrome .row {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1rem;
+}
+#chrome .row.filters {
+  padding: 0.9rem 0 0.85rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+h1 {
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  margin: 0;
+}
+
+/* ---- Dropdown ----------------------------------------------------------
+   Replaces every native <select>. Same type treatment the old rule had, since
+   the control's look was never the problem — the OS chrome around it was. */
+.dd {
+  position: relative;
+  display: inline-block;
+}
+.dd-trigger {
+  position: relative;
+  background: none;
+  border: 1px solid var(--hair);
+  border-radius: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0.3rem 1.45rem 0.3rem 0.5rem;
+  cursor: pointer;
+}
+/* Two borders rotated, not a glyph: it inherits colour and needs no font. */
+.dd-trigger::after {
+  content: '';
+  position: absolute;
+  right: 0.55rem;
+  top: 50%;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  opacity: 0.8;
+}
+.dd-trigger:hover {
+  border-color: var(--hair-lit);
+}
+.dd-trigger:focus,
+.dd-trigger[aria-expanded='true'] {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.dd-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 15rem;
+  overflow-y: auto;
+  background: #0f0f10;
+  border: 1px solid var(--hair-lit);
+}
+.dd-option {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.38rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dd-option:hover,
+.dd-option[data-active='true'] {
+  color: var(--fg);
+  background: rgba(244, 242, 239, 0.05);
+}
+/* Accent as an inset rule for the current choice — the same vocabulary
+   .card.flagged already uses for 'this one'. */
+.dd-option[aria-selected='true'] {
+  color: var(--fg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* The way to the time dashboard, and the one thing in this header you can go
+   to — the project name states, the switcher and the search are controls that
+   stay here. It shipped as `micro dim` beside four muted labels and the owner
+   said it was easy to miss, which is the mistake the contract guide's summary
+   made first (see .brief-guide > summary): muted is the colour of every inert
+   label, so an accent-less link reads as one more. Hence the accent, and an
+   arrow rather than a chevron, because this leaves the page instead of opening
+   something. Both marks are borders, not a glyph, so they inherit the colour
+   and need no font — the .dd-trigger idiom. #status.offline is also accent;
+   that alarm announces itself by its words as well as its colour. */
+#dashboard-link {
+  position: relative;
+  color: var(--accent);
+  text-decoration: none;
+  padding-right: 1.1rem;
+  /* Against body's inherited `overflow-wrap: anywhere`, which would otherwise
+     let this shrink to one letter per line — the arrow's 1.1rem gutter made it
+     the first item in the row to go. Same value and same reason as the header
+     group in the phone query below; see the longer note there. */
+  overflow-wrap: break-word;
+}
+/* The shaft. A zero-height box whose 1px border is pulled back half its own
+   weight, so its centre — not its top edge — lands on the optical middle the
+   head is centred on. Without that the two meet with a half-pixel kink. */
+#dashboard-link::before {
+  content: '';
+  position: absolute;
+  right: 0.12rem;
+  top: 50%;
+  width: 0.62rem;
+  border-top: 1px solid currentColor;
+  transform: translateY(-0.5px);
+}
+/* The head: one corner of a square, rotated to point the way out. */
+#dashboard-link::after {
+  content: '';
+  position: absolute;
+  right: 0.14rem;
+  top: 50%;
+  width: 0.26rem;
+  height: 0.26rem;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+}
+#dashboard-link:hover,
+#dashboard-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}
+
+#status {
+  margin-left: auto;
+}
+#status.saving {
+  color: var(--fg);
+}
+#status.offline {
+  color: var(--accent);
+}
+
+#search {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0;
+  width: 15rem;
+}
+#search::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+#search:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+#tag-filter {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.tag-chip {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  border: 1px solid var(--hair);
+  background: none;
+  padding: 0.22rem 0.5rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tag-chip:hover {
+  border-color: var(--hair-lit);
+}
+.tag-chip[aria-pressed='true'] {
+  border-color: currentColor;
+  color: var(--fg);
+}
+
+/* ---- Board ------------------------------------------------------------- */
+
+/* Gutters match #chrome's padding exactly — the same value the wordmark is
+   inset by — and the column group centres once it stops overflowing.
+   padding-inline is the FLOOR, auto margins do the centring. On a 3840px display
+   the seven columns span 1848px, so without centring the board hugs the left and
+   leaves a 1960px void; below ~1912px the free space is negative, the auto
+   margins resolve to zero, and the gutters are the padding again.
+   Auto margins rather than `justify-content: center`, which on an overflowing
+   scroller makes the first column unreachable. */
+#board {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  overflow-x: auto;
+  padding-inline: var(--pad);
+}
+.column:first-child {
+  margin-inline-start: auto;
+}
+.column:last-child {
+  margin-inline-end: auto;
+}
+.column {
+  flex: 0 0 16.5rem; /* 264px at a 16px root, 297px at 18px — grows with the type */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--hair);
+}
+.column:last-child {
+  border-right: 0;
+}
+.column-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* Matches .cards' horizontal padding exactly, so the label lines up with the
+     left edge of a card and the [+] with its right edge. */
+  padding: 0.85rem 0.75rem 0.7rem;
+  border-bottom: 1px solid var(--hair);
+  background: var(--bg);
+}
+.column-head .count {
+  opacity: 0.55;
+}
+.column-head .add {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--hair);
+  color: var(--muted);
+  width: 1.15rem;
+  height: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+}
+.column-head .add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cards {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.7rem 0.75rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.cards.dragover {
+  background: rgba(255, 82, 39, 0.03);
+}
+
+/* ---- Card -------------------------------------------------------------- */
+
+.card {
+  border: 1px solid var(--hair);
+  padding: 0.6rem 0.7rem 0.55rem;
+  cursor: grab;
+  user-select: none;
+  background: none;
+}
+.card:hover {
+  border-color: var(--hair-lit);
+}
+.card.dragging {
+  opacity: 0.35;
+}
+.card.flagged {
+  border-left: 2px solid var(--accent);
+  padding-left: calc(0.7rem - 1px);
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.card-tag {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.card-marks {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+.unread-dot {
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.card-title {
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+.card-detail {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  margin-top: 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-foot {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.75;
+  margin-top: 0.4rem;
+  display: flex;
+  gap: 0.5rem;
+}
+.drop-line {
+  height: 0;
+  border-top: 1px solid var(--accent);
+  margin: -0.3rem 0;
+}
+.column-empty {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.35;
+  padding: 0.4rem 0.1rem;
+}
+
+/* ---- Modal ------------------------------------------------------------- */
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8vh;
+  z-index: 10;
+}
+#overlay[hidden] {
+  display: none;
+}
+#panel {
+  width: 38.75rem; /* 620px at a 16px root, 698px at 18px */
+  max-width: calc(100vw - 3rem);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #0f0f10;
+  border: 1px solid var(--hair);
+  padding: 1.4rem 1.5rem 1.2rem;
+}
+#panel label.micro,
+#panel .panel-col > span.micro {
+  display: block;
+  margin: 1.1rem 0 0.35rem;
+}
+#panel label.micro:first-of-type {
+  margin-top: 0;
+}
+
+/* Editorial fields: a hairline underneath, never a box. */
+#panel textarea,
+#panel input[type='text'] {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font-family: 'Geist', ui-sans-serif, sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  padding: 0.3rem 0;
+  resize: none;
+  overflow: hidden;
+}
+#panel textarea.title-field {
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+#panel textarea:focus,
+#panel input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+#panel .panel-row {
+  display: flex;
+  gap: 1.4rem;
+  align-items: flex-end;
+  margin-top: 0.2rem;
+}
+/* Column and Board sit at their natural width; Tags has a row of its own below.
+   They used to share one row in which every column could grow, so each chip
+   widened Tags and squeezed the two dropdowns. */
+#panel .panel-col {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+#panel .panel-row.tags-row .panel-col {
+  flex: 1 1 100%;
+}
+.flagwrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  padding-bottom: 0.3rem;
+  margin-left: auto;
+}
+.flagwrap input {
+  accent-color: var(--accent);
+}
+
+#f-tags-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.tag-pill {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  border: 1px solid var(--hair);
+  padding: 0.2rem 0.4rem;
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+.tag-pill button {
+  background: none;
+  border: 0;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.tag-pill button:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.notes-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 1.5rem 0 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hair);
+}
+.note {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--hair);
+}
+.note-head {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+/* Remove a note: shown on hover, always under the phone breakpoint (nothing
+   hovers on a phone), confirmed before it acts. Any author — the board is the owner's. */
+.note-remove {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.note:hover .note-remove,
+.note-remove:focus-visible {
+  opacity: 1;
+}
+.note-remove:hover {
+  color: var(--fail);
+}
+/* A note's first paragraph shows; the rest sits behind this. Mirrored in the
+   snapshot's inline CSS — same classes, same behaviour, no script either side. */
+.note-more > summary {
+  list-style: none;
+  cursor: pointer;
+  margin-top: 0.3rem;
+  color: var(--muted);
+}
+.note-more > summary::-webkit-details-marker {
+  display: none;
+}
+.note-more > summary:hover {
+  color: var(--accent);
+}
+.note-more .when-open {
+  display: none;
+}
+.note-more[open] .when-open {
+  display: inline;
+}
+.note-more[open] .when-closed {
+  display: none;
+}
+.note-more > .note-text {
+  margin-top: 0.4rem;
+}
+
+/* The contract guide under Detail. Collapsed; a reader opens it when stuck on a
+   heading. The weak clause is struck through in the fail colour, the strong
+   example carries the ok colour, so the trap reads before the words do. */
+.brief-guide {
+  margin: 0.4rem 0 0.2rem;
+  border-left: 1px solid var(--hair-lit);
+  padding: 0.1rem 0 0.1rem 0.6rem;
+}
+/* Every other micro label in this panel — COLUMN, TAGS, NOTES — is inert text,
+   so a bare micro summary read as one more dead label: the owner opened a Loop
+   draft and saw six headings and a caption. The chevron is the dropdown's own
+   idiom, two rotated borders rather than a glyph, and it turns on open. */
+.brief-guide > summary {
+  list-style: none;
+  cursor: pointer;
+  /* The accent, and the ONLY accent-coloured text in the panel. Muted was the
+     colour of every inert label around it (COLUMN, TAGS, NOTES) and the owner
+     twice looked straight past it. One accent is the visual language's rule,
+     and this is what it is for: the one thing here you can act on. */
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+.brief-guide > summary::-webkit-details-marker {
+  display: none;
+}
+.brief-guide > summary::before {
+  content: '';
+  width: 0.3rem;
+  height: 0.3rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg);
+  transition: transform 0.12s ease;
+}
+.brief-guide[open] > summary::before {
+  transform: translateY(-2px) rotate(45deg);
+}
+.brief-guide > summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+/* The six contract fields. Each a textarea that grows, its hint as the
+   placeholder, an 'i' that opens the example (and the weak-versus-strong pair
+   for the required two). The section's summary carries the contract's state. */
+.contract-block {
+  margin-top: 0.75rem;
+}
+.contract-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+.contract-head .micro.req {
+  color: var(--fg);
+}
+.info-toggle {
+  background: none;
+  border: 1px solid var(--hair-lit);
+  border-radius: 50%;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.info-toggle:hover,
+.info-toggle[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.contract-field {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  padding: 0.2rem 0;
+  resize: none;
+}
+.contract-field:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.contract-field::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.contract-status {
+  color: var(--muted);
+  margin-left: 0.4rem;
+}
+.field-info {
+  margin: 0.35rem 0 0.1rem;
+}
+.guide-example {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.6rem;
+  background: rgba(244, 242, 239, 0.04);
+  color: var(--fg);
+}
+.guide-weak {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--fail);
+  text-decoration-color: var(--fail);
+  margin-top: 0.3rem;
+}
+.guide-strong {
+  border-left: 2px solid var(--ok);
+}
+.guide-why {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
+/* Time worked — the chip on the face, the toggle and the session rows in the
+   panel. Mirrored in the snapshot's inline CSS for the read-only half. */
+.time-chip.running {
+  color: var(--accent);
+}
+/* The foot is ONE line. Its spans used to shrink and wrap their own words —
+   'just moved' became two lines beside a long origin or a long note count. The
+   fixed spans never wrap; the last one (origin, or the note count) truncates,
+   and the full text is a hover away (title) or in the panel. */
+.card-foot > span {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.card-foot > span:last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The Source row: mono like the labels but never uppercased — it carries URLs. */
+.source-line {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.source-line a {
+  color: var(--fg);
+}
+.time-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+#f-time-total.over {
+  color: var(--warn);
+}
+.warn {
+  color: var(--warn);
+}
+#f-time-toggle,
+#f-time-add,
+.time-form-foot button {
+  background: none;
+  border: 1px solid var(--hair-lit);
+  color: var(--fg);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+#f-time-toggle.running {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+#f-time-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* A session is two lines: day and clock with the duration right-aligned in
+   tabular figures, then the description beneath, wrapping. The eye runs down
+   the right edge for time and down the left for what was done. */
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.45rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--hair);
+}
+.session-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.session-when {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+.session-duration {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.session-remove {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.session:hover .session-remove,
+.session-remove:focus-visible {
+  opacity: 1;
+}
+.session-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+}
+.session-note {
+  width: 100%;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.15rem 0;
+}
+.session-note:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.session button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+.session button:hover {
+  color: var(--fail);
+}
+/* The Add time form: a local date and clock, minutes linked to the stop. */
+.time-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem 0.8rem;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--hair);
+}
+.time-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.time-form input,
+.field-input {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.15rem 0;
+  min-width: 0;
+  color-scheme: dark;
+}
+.time-form input:focus,
+.field-input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.field-input {
+  width: 9rem;
+  font-size: 0.86rem;
+}
+.time-form .time-form-note {
+  grid-column: 1 / -1;
+}
+.time-form-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.note-text {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.note-text a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--muted);
+}
+#f-new-note {
+  margin-top: 0.7rem;
+}
+
+#panel .foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hair);
+}
+#panel button.micro {
+  background: none;
+  border: 1px solid var(--hair);
+  color: var(--muted);
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+#panel button.micro:hover {
+  border-color: var(--hair-lit);
+  color: var(--fg);
+}
+#panel button.danger:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- Attachments -------------------------------------------------------- */
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.attach-chip svg {
+  display: block;
+}
+
+#f-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+#f-attachments:empty {
+  display: none;
+}
+.attachment img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--hair);
+}
+.attachment figcaption {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  margin-top: 0.3rem;
+}
+.attachment figcaption button {
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  margin-left: auto;
+}
+.attachment figcaption button:hover {
+  color: var(--accent);
+}
+.attachment {
+  margin: 0;
+}
+
+/* A drop target reads as one hairline turning accent, nothing more. */
+#panel.dropping {
+  border-color: var(--accent);
+}
+
+/* ---- Done is a settled state -------------------------------------------- */
+
+/* Dimmed and de-emphasised rather than recoloured: the palette has one accent
+   and it means priority, so a second colour here would compete with it. Hover
+   restores full contrast, so a finished card you actually want to read is never
+   hard to read. */
+.column.col-done .card {
+  opacity: 0.5;
+}
+.column.col-done .card:hover {
+  opacity: 1;
+}
+.column.col-done .card-title {
+  font-weight: 400;
+  color: var(--muted);
+}
+.column.col-done .card:hover .card-title {
+  color: var(--fg);
+}
+
+#panel .panel-col .dd {
+  display: block;
+}
+#panel .panel-col .dd-trigger {
+  width: 100%;
+}
+
+/* A contract that cannot be worked yet. Its own row, so it neither crowds the
+   two-line detail clamp above it nor the foot below. */
+.brief-warn {
+  margin-top: 0.45rem;
+  color: var(--warn);
+  border-left: 2px solid var(--warn);
+  padding-left: 0.45rem;
+  opacity: 0.95;
+}
+
+/* The gate's ruling, beside the unread dot. currentColor on the border so one
+   line sets both hue and frame. */
+.verdict {
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  padding: 0.08rem 0.28rem;
+  white-space: nowrap;
+}
+.verdict[data-verdict='meets'] {
+  color: var(--ok);
+}
+.verdict[data-verdict='fails'] {
+  color: var(--fail);
+}
+
+/* ---- Phone -------------------------------------------------------------
+   ONE breakpoint, and the number below must match PHONE_MAX in ui/phone.js —
+   board/test/phone.test.js asserts the two agree, so 'one documented threshold'
+   is enforced rather than hoped for. Below it every column takes the full width
+   and scroll-snaps, which gets the swipe from the browser rather than from a
+   gesture library. */
+#phone-nav {
+  display: none;
+}
+/* Only a phone needs it: ⌘↵ commits a note everywhere a modifier key exists. */
+#f-note-add {
+  display: none;
+}
+.pn-step {
+  background: none;
+  border: 1px solid var(--hair);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  cursor: pointer;
+}
+.pn-step:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.pn-step:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Add card is an affirmative action and must not read as Close. Accent here is
+   consistent with its other meaning in this interface: the thing to act on. */
+#panel .foot .primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  #phone-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0 0 0.85rem;
+  }
+  #pn-label {
+    flex: 1 1 auto;
+  }
+  #board {
+    padding-inline: 0;
+    scroll-snap-type: x mandatory;
+  }
+  /* The desktop gutters are auto margins on the end columns. They would fight
+     snapping, and they are what would otherwise leave a sliver of the next
+     column on screen. */
+  .column:first-child,
+  .column:last-child {
+    margin-inline: 0;
+  }
+  .column {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    border-right: 0;
+  }
+  .column-head,
+  .cards {
+    padding-inline: var(--pad);
+  }
+  #search {
+    width: 100%;
+  }
+  /* The chrome's title row is a nowrap flex line, so at a narrow width it does
+     not wrap — it crushes. Measured at 320px on 2026-09-18: "Docket" broke
+     across three lines and the switcher read "DOC / KET · 56". It has been
+     that way since the header was built; the phone gate never caught it
+     because that gate renders hostile cards, not the chrome. Let the line
+     wrap the way .row.filters already does, and refuse mid-word breaks, so
+     each item keeps its own shape and the row grows by a line instead.
+     `:not(.filters)` because `#chrome .row` outspecifies `.row.filters`, so an
+     unscoped row-gap here would also tighten the filters row. */
+  #chrome .row:not(.filters) {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  /* `break-word`, NOT `nowrap`. The crush came from body's inherited
+     `overflow-wrap: anywhere` (see the note on body): `anywhere` is the one
+     value that also shrinks an element's min-content width, so a flex item
+     carrying it will squeeze to a single character rather than hold its word.
+     `break-word` breaks a word only when it cannot fit a line by itself and
+     leaves min-content alone, so "Docket" keeps its width here while a project
+     name wraps at its spaces and a long status message still wraps instead of
+     running off the side. `nowrap` was tried first and was wrong: a 31-character
+     project name overflowed the document at 320px (362px > 320px, measured). */
+  #chrome h1,
+  #project-switch .dd-trigger,
+  #status {
+    overflow-wrap: break-word;
+  }
+  #f-note-add {
+    display: block;
+    margin-top: 0.6rem;
+    background: none;
+    border: 1px solid var(--hair-lit);
+    color: var(--fg);
+    padding: 0.5rem 0.8rem;
+    width: 100%;
+    cursor: pointer;
+  }
+  #f-note-add:active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .note-remove,
+  .session-remove {
+    opacity: 1;
+  }
+  .time-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

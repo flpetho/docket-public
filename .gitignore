@@ -1,0 +1,19 @@
+node_modules/
+.vercel/
+.env
+.env.*
+
+# A board belongs in the project it describes, never in the tool's own repo.
+# This repo is the tool; committing a board here would publish somebody's
+# planning along with the code, and the web build would then render it.
+.docket/
+
+# `docket snapshot`'s default output. A rendered view of board.json, which is
+# already committed beside it — so committing this too would duplicate the
+# board's content into a second file that goes stale the moment a card moves.
+# Regenerate it instead; it takes under a second.
+.docket/snapshot.html
+
+# Same reason: web/build.mjs renders it from the board.json committed beside it.
+web/public/
+.DS_Store

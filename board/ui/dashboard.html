@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Time — Docket</title>
+<meta name="theme-color" content="#0b0b0c" />
+<link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" href="/icons/icon-192.png" type="image/png" />
+<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body class="dashboard">
+<header id="chrome">
+  <div class="row">
+    <h1 id="project-name">Time</h1>
+    <a id="back" class="micro" href="/">board</a>
+    <span id="status" class="micro"></span>
+  </div>
+</header>
+
+<main id="dash">
+  <section id="tiles" class="tiles"></section>
+
+  <section>
+    <div class="section-head"><span class="micro">Last 14 days</span><span id="days-total" class="micro dim"></span></div>
+    <div id="chart" class="chart" role="img" aria-label="Time per day, last fourteen days"></div>
+    <div id="chart-labels" class="chart-labels" aria-hidden="true"></div>
+  </section>
+
+  <section>
+    <div class="section-head"><span class="micro">Per card</span><span id="rate-note" class="micro dim"></span></div>
+    <div id="cards" class="rows"></div>
+  </section>
+
+  <section>
+    <div class="section-head"><span class="micro">Add time</span></div>
+    <form id="add" class="add time-form">
+      <label class="micro grow-col">Card <select id="add-card"></select></label>
+      <label class="micro">Date <input id="add-date" type="date" required /></label>
+      <label class="micro">Start <input id="add-start" type="time" required /></label>
+      <label class="micro">Stop <input id="add-stop" type="time" required /></label>
+      <label class="micro">Minutes <input id="add-minutes" type="number" min="1" step="1" inputmode="numeric" /></label>
+      <label class="micro grow-col">What was done <input id="add-note" type="text" placeholder="optional" /></label>
+      <button id="add-save" class="micro primary" type="submit">Add time</button>
+      <span id="add-error" class="micro warn" role="alert"></span>
+    </form>
+  </section>
+
+  <section>
+    <div class="section-head"><span class="micro">Sessions</span><span id="sessions-count" class="micro dim"></span></div>
+    <table id="sessions" class="sessions-table">
+      <thead>
+        <tr><th class="s-when">When</th><th class="s-card">Card</th><th class="s-note">What was done</th><th class="s-time">Time</th></tr>
+      </thead>
+      <tbody id="sessions-body"></tbody>
+      <tfoot id="sessions-foot"></tfoot>
+    </table>
+  </section>
+</main>
+
+<footer class="micro dim">Tracked time is what happened; an invoice is what was agreed. The two will differ.</footer>
+
+<script type="module" src="/dashboard.js"></script>
+</body>
+</html>
