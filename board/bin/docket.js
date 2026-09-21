@@ -124,18 +124,28 @@ async function init(argv, { cwd, registryFile, now, log }) {
   return 0
 }
 
+/** Told apart from a real failure, which must still print a redacted reason. */
+const NO_INBOX_REPO = 'NO_INBOX_REPO'
+
 async function inboxClient(override) {
+  // The repo first: no default, because this used to fall back to the author's
+  // own inbox, so an unset INBOX_REPO drained a stranger's captures instead of
+  // saying so. Asked before the token, so an unconfigured pipe costs no
+  // subprocess and reports the real reason rather than a credential error.
+  const repo = override ?? process.env.INBOX_REPO
+  if (!repo) {
+    const error = new Error('no inbox repo — pass --repo <owner/name> or set INBOX_REPO')
+    error.code = NO_INBOX_REPO
+    throw error
+  }
+  // `stderr: ignore`: gh writes "no oauth token found" to the terminal on its
+  // way to throwing, which read as a failure on a first run before anything
+  // could explain that the capture pipe is optional.
   const token =
     process.env.GITHUB_TOKEN ??
     (await import('node:child_process'))
-      .execSync('gh auth token', { encoding: 'utf8' })
+      .execSync('gh auth token', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .trim()
-  // No default: this used to fall back to the author's own inbox repo, so an
-  // unset INBOX_REPO drained from a stranger's captures rather than saying so.
-  const repo = override ?? process.env.INBOX_REPO
-  if (!repo) {
-    throw new Error('no inbox repo — pass --repo <owner/name> or set INBOX_REPO')
-  }
   return createInbox({ token, repo })
 }
 
@@ -221,7 +231,16 @@ async function doctor(argv, { registryFile, log, inboxClient }) {
       )
     }
   } catch (error) {
-    log(`\ncould not read buckets: ${safeError(error.message)}`)
+    // Not configured is not broken: the board half stands alone, and the pipe
+    // is opt-in. Only this one error means "not set up" — everything else is a
+    // real failure and must print its reason through safeError.
+    if (error.code === NO_INBOX_REPO) {
+      log('')
+      log('telegram bucket → board')
+      log('  no inbox repo configured — the capture pipe is optional, see INSTALL.md')
+    } else {
+      log(`\ncould not read buckets: ${safeError(error.message)}`)
+    }
   }
   return 0
 }
