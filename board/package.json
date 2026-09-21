@@ -1,0 +1,15 @@
+{
+  "name": "docket-board",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --test-timeout=20000 test/*.test.js"
+  },
+  "bin": {
+    "docket": "./bin/docket.js"
+  }
+}

@@ -1,0 +1,380 @@
+/* The time dashboard: one board's time as a page. Shares style.css for the
+   chrome, the type, the form controls and the one accent; this file is the
+   page's own layout. A second media query is allowed here — the one-query
+   rule pins style.css, where the board's breakpoint lives. */
+body.dashboard {
+  height: auto;
+  min-height: 100vh;
+  display: block;
+  overflow: auto;
+  /* The session table's one type size, named once so no cell can drift back
+     out of agreement with the others. Column heads and the foot label keep
+     their micro treatment — they are labels, not data. */
+  --row-type: 0.82rem;
+}
+#dash {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 var(--pad) 1rem;
+  box-sizing: border-box;
+}
+#dash section {
+  margin-top: 1.6rem;
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--hair);
+  padding-top: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+#back {
+  color: var(--muted);
+}
+#back:hover {
+  color: var(--accent);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+.tile {
+  border: 1px solid var(--hair);
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.tile-value {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+/* The fourteen-day chart, as docket-dashboard/dashboard.html draws it: a grid
+   of columns growing from a hairline baseline, the accent only where there is
+   time, day numbers beneath. */
+.chart {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 0.4rem;
+  align-items: end;
+  height: 7rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--hair);
+}
+.chart div {
+  background: var(--hair);
+  position: relative;
+  min-height: 2px;
+}
+.chart div.has {
+  background: var(--accent);
+}
+.chart-labels {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.chart-labels span {
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.rows .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--hair);
+  align-items: baseline;
+}
+.row-title {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.row-meta {
+  display: flex;
+  gap: 0.8rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.row-meta .session-duration {
+  font-size: 0.82rem;
+}
+.row-meta .session-duration.running {
+  color: var(--accent);
+}
+.bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: var(--hair);
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+/* With an estimate the bar is a meter: the track is the whole estimate, one
+   step lighter so it reads as a budget rather than a baseline; the fill is what
+   has been spent; over the estimate the whole bar turns the warn colour, the
+   same colour the "30m over" text wears. */
+.bar.budget {
+  background: var(--hair-lit);
+}
+.bar.budget.over > i {
+  background: var(--warn);
+}
+.row-note {
+  grid-column: 1 / -1;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* The session table. Cells are s-when/s-card/s-note/s-time, never .card or
+   .note — those are the board face and the note thread in style.css, and the
+   first version borrowed their borders by accident. Each column in its own voice: the when in mono micro
+   grey, the card name small and secondary, the description the one line in body
+   type, the duration in tabular mono on the right with the total beneath it. */
+/* Fixed layout: the columns get the widths they are given, so the description
+   cannot starve the card name into a one-character-wide sliver — which is what
+   the first version did when it wrapped the card column "anywhere" and gave the
+   note 100%. */
+.sessions-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.sessions-table th.s-when,
+.sessions-table td.s-when {
+  width: 7.5rem;
+}
+/* 26%, and it was widened to 32% on 2026-09-18 before being put back. The
+   thought was that a wrapping card title had slack beside it; measured at a
+   888px table, it does not. The longest description needs 468px and its cell
+   has 388, while the title needs 284 in a 284px cell — both columns are
+   already short, and the two together need about 996px of a 888px table, so
+   one of them must wrap whatever the split. The description is the substance
+   of a row, so it gets the room and the title wraps. Don't chase this: a long
+   enough title always wraps, and taking width from the description to stop it
+   makes the table worse. */
+.sessions-table th.s-card,
+.sessions-table td.s-card {
+  width: 26%;
+}
+.sessions-table th.s-time,
+.sessions-table td.s-time {
+  width: 4.5rem;
+}
+.sessions-table th {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--muted);
+  text-align: left;
+  padding: 0 0.8rem 0.45rem 0;
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+}
+.sessions-table td {
+  padding: 0.6rem 0.8rem 0.6rem 0;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: baseline;
+}
+.sessions-table th.s-time,
+.sessions-table td.s-time {
+  text-align: right;
+  padding-right: 0;
+  white-space: nowrap;
+}
+/* ONE type size across every data cell — the owner's ask, 2026-09-18. It
+   shipped with four: when 0.62, card 0.78, what-was-done 0.88, time 0.82, so
+   scanning down a row crossed three sizes and the eye had to re-settle at each
+   column. A table is read across, and mixed sizes are what make that hard.
+   Face still varies, because that is the interface's existing idiom: mono for
+   instants and durations, the text face for prose. Difference now carries
+   meaning through colour and face, never size. */
+.sessions-table td {
+  font-size: var(--row-type);
+  line-height: 1.5;
+}
+.sessions-table td.s-when {
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sessions-table td.s-when .when-clock {
+  display: block;
+  opacity: 0.75;
+}
+/* The card title opens the card, so it must not wear the colour of things
+   that only state — muted grey is what every inert label here uses, and the
+   owner has looked past an actionable control in that colour three times now
+   (see the decision log, 2026-09-18). Foreground at rest, underlined on hover
+   and on focus; the accent stays spoken for by the time column. */
+.sessions-table td.s-card .s-open {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+.sessions-table td.s-card .s-open:hover,
+.sessions-table td.s-card .s-open:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+.sessions-table td.s-card {
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+.sessions-table td.s-note {
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+/* Time in the accent — the owner's ask. It is the column the page is about,
+   it matches the chart bars and the card meters, and it is the one thing in
+   the table read as a quantity rather than as words. */
+.sessions-table td.s-time {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.sessions-table tfoot td {
+  border-bottom: 0;
+  border-top: 1px solid var(--hair-lit);
+  padding-top: 0.6rem;
+}
+.sessions-table tfoot .foot-label {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Four columns, the same as the panel's copy of this form, so Date, Start,
+   Stop and Minutes sit on one row. At three, Minutes fell to a row of its own
+   and left two empty cells beside it. The Card picker spans the width because
+   its options are card titles. */
+.add.time-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+.add select {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.15rem 0;
+  min-width: 0;
+  color-scheme: dark;
+  /* A <select> takes its intrinsic width from its WIDEST option, and these
+     options are card titles. `min-width: 0` does not help: it lets the box
+     shrink, it does not stop the box asking for 640px in the first place.
+     Without the explicit width the page scrolled sideways on a phone —
+     document 658px against a 390px viewport, measured 2026-09-18 — which is
+     the one thing the phone layout exists to prevent. */
+  width: 100%;
+  max-width: 100%;
+}
+.add .grow-col {
+  grid-column: 1 / -1;
+}
+#add-save {
+  background: none;
+  border: 1px solid var(--hair-lit);
+  color: var(--fg);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  /* Its own cell, at its own size, aligned left under the fields — a submit
+     stretched across a quarter of the form reads as a banner, not a button. */
+  justify-self: start;
+  align-self: end;
+}
+#add-save:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+footer.dim {
+  max-width: 960px;
+  margin: 1.5rem auto 2.5rem;
+  padding: 0 var(--pad);
+  box-sizing: border-box;
+}
+@media (max-width: 640px) {
+  .sessions-table thead {
+    display: none;
+  }
+  .sessions-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1rem;
+    border-bottom: 1px solid var(--hair);
+    padding: 0.55rem 0;
+  }
+  .sessions-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    width: auto;
+  }
+  .sessions-table td.s-when .when-clock {
+    display: inline;
+    margin-left: 0.5rem;
+  }
+  .sessions-table td.s-time {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .sessions-table td.s-card,
+  .sessions-table td.s-note {
+    grid-column: 1 / -1;
+  }
+  .sessions-table td.s-note {
+    margin-top: 0.15rem;
+  }
+  .sessions-table tfoot tr {
+    border-bottom: 0;
+    border-top: 1px solid var(--hair-lit);
+  }
+  .sessions-table tfoot .foot-label {
+    grid-column: 1;
+    text-align: left;
+  }
+  .add.time-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rows .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row-meta {
+    justify-content: flex-start;
+  }
+}

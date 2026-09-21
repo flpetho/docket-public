@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docket</title>
+<meta name="theme-color" content="#0b0b0c" />
+<link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icons/icon-192.png" type="image/png" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header id="chrome">
+  <div class="row">
+    <h1 id="project-name">Docket</h1>
+    <div id="project-switch"></div>
+    <a id="dashboard-link" class="micro" href="/dashboard">time</a>
+    <span id="status" class="micro"></span>
+  </div>
+  <div class="row filters">
+    <input id="search" type="search" placeholder="Search titles, details, notes" aria-label="Search" />
+    <div id="tag-filter"></div>
+  </div>
+  <nav id="phone-nav" aria-label="Column">
+    <button id="pn-prev" class="pn-step" aria-label="Previous column">&#8249;</button>
+    <span id="pn-label" class="micro" aria-live="polite"></span>
+    <button id="pn-next" class="pn-step" aria-label="Next column">&#8250;</button>
+  </nav>
+</header>
+
+<main id="board"></main>
+
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

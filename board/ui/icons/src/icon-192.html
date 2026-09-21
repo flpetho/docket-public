@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8">
+<style>
+  @font-face { font-family:'Geist'; font-weight:100 900; src:url('../../fonts/geist-latin.woff2') format('woff2'); }
+  html,body{margin:0;width:192px;height:192px;background:#0b0b0c;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  /* No margin compensation: flex centres the margin box, so a negative
+     margin-right pushes the ink RIGHT — the opposite of the intent. Letting the
+     line box centre leaves the ink a few px left of centre, which is where a
+     wordmark ending in a period wants to sit anyway. */
+  .mark{font-family:'Geist';font-weight:500;font-size:143px;letter-spacing:-0.03em;
+        color:#f4f2ef;line-height:1}
+  .dot{color:#ff5227}
+</style>
+<div class="mark">d<span class="dot">.</span></div>

@@ -1,0 +1,12 @@
+{
+  "name": "docket-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The docket board as a read-only static page, for a browser that cannot reach the daemon.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test --test-timeout=20000 test/*.test.js"
+  }
+}
