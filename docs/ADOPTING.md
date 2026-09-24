@@ -5,7 +5,7 @@ appended to the one already there. It is written to be pasted, and it is address
 coding agent rather than to you.
 
 Everything below is the working agreement. It is not a description of the tool; the tool is
-six MCP tools that are already available. This is what they mean.
+seven MCP tools that are already available. This is what they mean.
 
 ---
 

@@ -120,3 +120,20 @@ test('the markup did not lose a chunk in the move', () => {
   assert.match(PANEL_HTML, /id="f-close"/)
   assert.ok(idsIn(PANEL_HTML).length >= 39, `expected the whole panel, found ${idsIn(PANEL_HTML).length} ids`)
 })
+
+test('the note composer offers a cancel as well as a commit', () => {
+  // It was one button reading 'Add note' with no way to abandon a draft but
+  // selecting and deleting it. The todo composer and the note edit form use the
+  // same pair, so three places doing the same thing are shaped the same way.
+  const map = panelElements(fakeDoc())
+  assert.equal(map.noteCancel, 'f-note-cancel')
+  assert.ok(idsIn(PANEL_HTML).includes('f-note-cancel'))
+})
+
+test('the panel has a todos section with a list, a count and a composer', () => {
+  const map = panelElements(fakeDoc())
+  assert.deepEqual(
+    { todos: map.todos, count: map.todoCount, field: map.newTodo, add: map.todoAdd, cancel: map.todoCancel },
+    { todos: 'f-todos', count: 'f-todo-count', field: 'f-new-todo', add: 'f-todo-add', cancel: 'f-todo-cancel' },
+  )
+})

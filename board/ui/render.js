@@ -2,6 +2,7 @@ import { briefWarning } from './brief.js'
 import { latestVerdict, verdictDate } from './verdict.js'
 import { tagColor } from './tag-color.js'
 import { formatDuration, totalMs } from './time.js'
+import { todoProgress } from './todos.js'
 
 export { tagColor }
 
@@ -200,6 +201,17 @@ function cardElement(card, { config, lastSeen, onOpen, onDragStart, onDragEnd })
     const chip = document.createElement('span')
     chip.className = card.time?.running ? 'time-chip running' : 'time-chip'
     chip.textContent = card.time?.running ? 'running' : formatDuration(worked)
+    foot.append(chip)
+  }
+
+  // Progress inside a card, visible while scanning a column. Only when there
+  // are todos: a chip reading 0/0 on every card would be noise.
+  const progress = todoProgress(card.todos)
+  if (progress.total) {
+    const chip = document.createElement('span')
+    chip.className = progress.done === progress.total ? 'todo-chip done' : 'todo-chip'
+    chip.textContent = `${progress.done}/${progress.total}`
+    chip.title = `${progress.done} of ${progress.total} todos done`
     foot.append(chip)
   }
 

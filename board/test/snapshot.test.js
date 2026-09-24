@@ -574,3 +574,53 @@ test('a note-less card with an origin marks it on the face so the CSS can keep i
   assert.ok(html.includes('<span class="origin">trello · a1b2c3d4 · This month · https://trello.com/c/a1b2c3d4</span>'))
   assert.ok(html.includes('.card-foot>span:last-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}'), 'the foot is one line')
 })
+
+// ---- editedAt on the phone snapshot (spec: note edit) ----------------------
+
+test('an edited note says so in the snapshot', () => {
+  const html = render([
+    card({ notes: [{ author: 'owner', at: '2026-09-23T10:00:00.000Z', text: 'corrected', editedAt: '2026-09-23T12:00:00.000Z' }] }),
+  ])
+  assert.match(html, /edited/)
+})
+
+test('an unedited note does not', () => {
+  const html = render([card({ notes: [{ author: 'owner', at: '2026-09-23T10:00:00.000Z', text: 'plain' }] })])
+  assert.doesNotMatch(html, /edited/)
+})
+
+// ---- todos, read-only (spec: note-edit-and-todos) --------------------------
+
+test('a card with todos renders them read-only in the snapshot', () => {
+  const html = render([
+    card({
+      todos: [
+        { id: 't1', text: 'read the spec', done: true, doneBy: 'claude', doneAt: '2026-09-23T10:00:00.000Z' },
+        { id: 't2', text: 'make it pass', done: false, doneBy: null, doneAt: null },
+      ],
+    }),
+  ])
+  assert.match(html, /read the spec/)
+  assert.match(html, /make it pass/)
+  assert.match(html, /1\/2/)
+})
+
+test('the snapshot still has no way to write', () => {
+  // The strongest form of "never make the phone authoritative": no script tag
+  // at all. A checkbox is rendered disabled; nothing can change it, and nothing
+  // could send it anywhere if it did.
+  const html = render([card({ todos: [{ id: 't1', text: 'x', done: false, doneBy: null, doneAt: null }] })])
+  assert.doesNotMatch(html, /<script/i)
+  assert.match(html, /disabled/)
+})
+
+test('a card with no todos renders no todo markup at all', () => {
+  const html = render([card({ todos: [] })])
+  assert.doesNotMatch(html, /class="todo"/)
+})
+
+test('todo text is escaped, not injected', () => {
+  const html = render([card({ todos: [{ id: 't1', text: '<img src=x onerror=alert(1)>', done: false, doneBy: null, doneAt: null }] })])
+  assert.doesNotMatch(html, /<img src=x/)
+  assert.match(html, /&lt;img/)
+})

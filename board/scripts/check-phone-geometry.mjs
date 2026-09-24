@@ -68,6 +68,14 @@ const board = {
       notes: [{ author: LONG.slice(0, 80), at: '2026-08-24T09:00:00.000Z', text: LONG }],
     }),
     card({
+      id: 'long-todo',
+      title: 'todo',
+      todos: [
+        { id: 't-long', text: LONG, done: false, doneBy: null, doneAt: null },
+        { id: 't-url', text: URL_TITLE, done: true, doneBy: 'claude', doneAt: '2026-08-24T09:00:00.000Z' },
+      ],
+    }),
+    card({
       id: 'long-brief',
       title: 'contract',
       column: 'loop',

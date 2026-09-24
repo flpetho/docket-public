@@ -97,11 +97,21 @@ test('a note can be committed without a modifier key', () => {
   assert.equal((modal.match(/\bonAddNote\(/g) ?? []).length, 1)
 })
 
-test('the button is hidden on desktop and shown only under the breakpoint', () => {
-  // Clause 4 of the phone card: desktop behaviour unchanged.
+test('the composer pair travels together — neither Save nor Cancel is hidden on desktop', () => {
+  // Clause 4 of the phone card used to hide Save on desktop entirely, back when
+  // it was one redundant button beside ⌘↵. The note composer is now a Save +
+  // Cancel pair — Cancel has no keyboard equivalent, so hiding either one
+  // strands the other. A screenshot on 2026-09-23 caught exactly this: the
+  // stale rule hid Save alone, leaving Cancel visible with no visible way to
+  // commit by mouse. A fix that only checked "#f-note-add is not display:none"
+  // would pass just as wrongly if Cancel were the one hidden instead — so both
+  // ids are asserted, not just the one the old rule named. Both get the phone
+  // breakpoint's full-width touch styling, together.
   const [beforeQuery, insideQuery] = css.split('@media')
-  assert.match(beforeQuery, /#f-note-add\s*{\s*display:\s*none/)
-  assert.match(insideQuery, /#f-note-add\s*{[^}]*display:\s*block/)
+  assert.doesNotMatch(beforeQuery, /#f-note-add\s*{\s*display:\s*none/)
+  assert.doesNotMatch(beforeQuery, /#f-note-cancel\s*{\s*display:\s*none/)
+  assert.match(insideQuery, /#f-note-add[^{]*{[^}]*display:\s*block/)
+  assert.match(insideQuery, /#f-note-cancel[^{]*{[^}]*display:\s*block/)
 })
 
 test('the note hint is not a dead instruction on a phone', () => {

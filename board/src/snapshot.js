@@ -37,6 +37,7 @@ import { columnAge, linkPattern, relativeAge } from '../ui/render.js'
 import { formatDuration, formatSession, totalMs } from '../ui/time.js'
 import { latestVerdict, verdictDate } from '../ui/verdict.js'
 import { tagColor } from '../ui/tag-color.js'
+import { todoProgress } from '../ui/todos.js'
 
 /**
  * Ampersand first, or every later replacement gets double-escaped.
@@ -165,6 +166,7 @@ function noteHtml(note, nowMs) {
     `<div class="note-head micro">`,
     `<span>${escapeHtml(note?.author ?? 'unknown')}</span>`,
     `<span class="dim">${escapeHtml(relativeAge(note?.at, nowMs))}</span>`,
+    note?.editedAt ? `<span class="dim">edited</span>` : '',
     `</div>`,
     `<div class="note-text">${linkifyHtml(lead)}</div>`,
     rest
@@ -172,6 +174,28 @@ function noteHtml(note, nowMs) {
       : '',
     `</div>`,
   ].join('')
+}
+
+/**
+ * The todo list, read-only. The checkbox is disabled and the page carries no
+ * script tag at all, which is what makes this file unable to write — the
+ * strongest form of "never make the phone authoritative".
+ */
+function todosHtml(todos) {
+  const list = Array.isArray(todos) ? todos : []
+  if (!list.length) return ''
+  const { done, total } = todoProgress(list)
+  const rows = list
+    .map(
+      (todo) =>
+        `<div class="todo${todo?.done ? ' done' : ''}"><input type="checkbox" disabled${todo?.done ? ' checked' : ''} /><span class="todo-text">${escapeHtml(todo?.text ?? '')}</span>${
+          todo?.done && todo?.doneBy && todo.doneBy !== 'owner'
+            ? `<span class="dim todo-by">${escapeHtml(todo.doneBy)}</span>`
+            : ''
+        }</div>`,
+    )
+    .join('')
+  return `<div class="note-head micro"><span>todos</span><span class="dim">${done}/${total}</span></div>${rows}`
 }
 
 /**
@@ -262,6 +286,7 @@ function cardHtml(card, { config, nowMs }) {
     body = `<div class="detail">${linkifyHtml(detail)}</div>`
   }
   const thread = notes.map((note) => noteHtml(note, nowMs)).join('')
+  const todos = todosHtml(card.todos)
   const timeLog = timeLogHtml(card.time, nowMs)
 
   // Provenance, and it has to be HERE rather than only on the face.
@@ -291,7 +316,7 @@ function cardHtml(card, { config, nowMs }) {
     warn,
     foot.length ? `<div class="card-foot micro">${foot.join('')}</div>` : '',
     `</summary>`,
-    `<div class="card-body">${body}${timeLog}${thread}${idLine}</div>`,
+    `<div class="card-body">${body}${timeLog}${todos}${thread}${idLine}</div>`,
     `</details>`,
   ].join('')
 }
@@ -541,6 +566,13 @@ summary::marker{content:''}
 .note-more[open] .when-open{display:inline}
 .note-more[open] .when-closed{display:none}
 .note-more>.note-text{margin-top:.4rem}
+.todo{display:flex;align-items:flex-start;gap:.5rem;padding:.2rem 0}
+.todo input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:.95em;height:.95em;position:relative;margin:.58em 0 0;background:var(--bg);border:1px solid var(--hair-lit)}
+.todo input[type=checkbox]:checked,.todo input[type=checkbox]:disabled:checked{background:var(--accent);border-color:var(--accent);opacity:1}
+.todo input[type=checkbox]:checked::after,.todo input[type=checkbox]:disabled:checked::after{content:'';position:absolute;left:29%;top:12%;width:28%;height:50%;border:solid var(--bg);border-width:0 .14em .14em 0;transform:rotate(45deg)}
+.todo-text{line-height:1.5;min-width:0;flex:1}
+.todo.done .todo-text{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent);text-decoration-thickness:1px}
+.todo-by{white-space:nowrap}
 .time-chip.running{color:var(--accent)}
 .time-log{margin-top:.8rem;border-left:1px solid var(--hair-lit);padding:.1rem 0 .1rem .6rem}
 .session{font-family:var(--mono);font-size:.62rem;letter-spacing:.04em;color:var(--muted);margin-top:.35rem;display:flex;flex-wrap:wrap;gap:.2rem .8rem}

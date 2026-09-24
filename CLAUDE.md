@@ -14,7 +14,7 @@ parts, all built:
 - **The board** (`board/`): a local kanban that drops into any project the way a `CLAUDE.md`
   does — state as a JSON file in that project's repo, one daemon serving every project,
   server-sent events so a file edit shows up in an open browser, installable as a PWA.
-- **The bridge** (`mcp/`): six MCP tools registered once at user scope, so an agent reads and
+- **The bridge** (`mcp/`): seven MCP tools registered once at user scope, so an agent reads and
   writes the same board the owner does, in every project.
 
 **The organizing idea: the board is shared state, not a report.** The owner adds, moves and
@@ -119,7 +119,7 @@ step between the owner and it.
 | `board/ui/dashboard-math.js` | The time dashboard's arithmetic — per-card shares, daily totals, due status, money — pure, so the page and any later command agree |
 | `board/ui/dashboard.js` | `/dashboard?project=`: one board's time as a page. Writes through `sync.js`, the same door as the panel; never a second write path |
 | `web/build.mjs` | The same snapshot, rendered at deploy time for a static site. A *separate artifact* — `board/` still has no build step. Refuses to run without being told which board |
-| `mcp/src/tools.js` | The six tools as pure functions over the store. No SDK, no zod — testable alone, and an SDK churn cannot reach it |
+| `mcp/src/tools.js` | The seven tools as pure functions over the store. No SDK, no zod — testable alone, and an SDK churn cannot reach it |
 | `mcp/server.js` | The only file that knows the MCP protocol exists |
 | `.claude/agents/docket-verifier.md` | The gate. Fresh context, no edit tools, rules meets/fails on a Loop card |
 

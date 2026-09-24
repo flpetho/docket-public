@@ -1,9 +1,11 @@
 import { createDropdown } from './dropdown.js'
 import { mountPanel } from './panel.js'
 import { addSession, deleteSession, setSessionNote, startTimer, stopTimer } from './time.js'
+import { addTodo, removeTodo, setDone } from './todos.js'
 import { createPager } from './phone.js'
 import { renderBoard, renderTagFilter } from './render.js'
 import { createSync, loadProjects } from './sync.js'
+import { applyEdit } from './note-edit.js'
 
 const boardRoot = document.getElementById('board')
 const statusElement = document.getElementById('status')
@@ -228,6 +230,17 @@ async function boot() {
         card.notes.push({ author: 'owner', at: stamp(), text })
         card.updatedAt = stamp()
       }),
+    onEditNote: (id, key, text) =>
+      // Same contract as onAddNote: 'saved' or 'lost'. False from applyEdit
+      // means the note is gone, the text is empty, or nothing changed — none
+      // of which a replay can rescue, and all of which must put the owner's
+      // text back rather than clearing the box.
+      sync.mutate((cards) => {
+        const card = cards.find((c) => c.id === id)
+        if (!card) return false
+        if (!applyEdit(card.notes, key, text, stamp())) return false
+        card.updatedAt = stamp()
+      }),
     onDeleteNote: (id, index) =>
       sync.mutate((cards) => {
         const card = cards.find((c) => c.id === id)
@@ -261,6 +274,26 @@ async function boot() {
           if (!addSession(card, { start: action.start, stop: action.stop, note: action.note })) return false
         }
         card.updatedAt = now
+      }),
+    // One callback with an action tag, the shape onTimer already uses. Every
+    // branch returns the operation's own boolean, so a todo that is gone
+    // reports 'lost' rather than a silent no-op.
+    onTodo: (id, action) =>
+      sync.mutate((cards) => {
+        const card = cards.find((c) => c.id === id)
+        if (!card) return false
+        // GET never normalises (only a write does — board/src/store.js), so a
+        // card that predates this field arrives here with no `todos` key at
+        // all. Same lazy-init idiom as time.js's `if (!card.time) card.time =
+        // emptyTime()`: default it in place rather than making addTodo refuse
+        // every legacy card until something else happens to touch it first.
+        if (!Array.isArray(card.todos)) card.todos = []
+        let changed = false
+        if (action.type === 'add') changed = addTodo(card.todos, { id: action.id, text: action.text })
+        else if (action.type === 'done') changed = setDone(card.todos, action.id, action.done, { by: 'owner', at: stamp() })
+        else if (action.type === 'remove') changed = removeTodo(card.todos, action.id)
+        if (!changed) return false
+        card.updatedAt = stamp()
       }),
     onMoveBoard: async (id, to) => {
       const response = await fetch(`/api/move?project=${encodeURIComponent(active.slug)}`, {

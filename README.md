@@ -4,7 +4,7 @@
 
 Type a thought on your phone. It lands in a private repo as a file. A command turns it into a card
 on the kanban board that lives *inside* the project it's about — as a JSON file in that project's
-own git repo. Claude reads and writes that same board through six MCP tools, so you're both
+own git repo. Claude reads and writes that same board through seven MCP tools, so you're both
 annotating one document instead of trading status reports. Drag a card into the **Loop** column
 and Claude works it unattended, then a *separate* agent with no stake in the work re-runs the
 acceptance criteria and rules meets or fails before you ever see a PR.
@@ -75,7 +75,7 @@ flowchart TB
 | **`bot/`** | A Telegram bot on one Vercel function. A message becomes a committed file; inline buttons file it to a bucket with one tap. 55 tests, no dependencies | Free tier |
 | **`docket-inbox`** | A private GitHub repo holding *only* captures. Never code — if it held its own source, every capture would trigger a redeploy | Free |
 | **`board/`** | The kanban. Store, daemon, SSE, PWA, CLI, and the drain. State is `.docket/board.json` in the project it describes. 444 tests, no dependencies — plus `docket snapshot`, the board as one script-free HTML file, and `web/`, the same render as a deployed page — which publishes every note on the board, so it refuses to run until told which board | Free |
-| **`mcp/`** | Six tools over the same store, registered once at user scope so *every* project — present and future — gets them. The only package with a dependency | Free |
+| **`mcp/`** | Seven tools over the same store, registered once at user scope so *every* project — present and future — gets them. The only package with a dependency | Free |
 | **`.claude/agents/docket-verifier.md`** | The gate. A subagent with fresh context and **no edit tools** that re-runs your acceptance criteria and writes a verdict | Tokens |
 
 ## The loop, in order

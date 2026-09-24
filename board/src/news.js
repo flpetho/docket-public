@@ -22,6 +22,8 @@
  * that case, and pretending otherwise would be worse than saying so.
  */
 
+import { noteStamp } from '../ui/note-edit.js'
+
 /** The one author whose notes are news. Everything else is us, or a tool. */
 export const OWNER = 'owner'
 
@@ -49,7 +51,10 @@ export function boardNews({ slug, doc, since }) {
   for (const card of doc?.cards ?? []) {
     for (const note of card.notes ?? []) {
       if (note?.author !== OWNER) continue
-      if (!newer(note.at, since)) continue
+      // The later of at and editedAt, so a correction the owner makes after a
+      // session's watermark still reaches the next one. The author filter above
+      // runs FIRST and is untouched: no timestamp can let a claude note through.
+      if (!newer(noteStamp(note), since)) continue
       notes.push({
         project: slug,
         cardId: card.id,
