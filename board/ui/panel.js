@@ -81,11 +81,6 @@ export const PANEL_HTML = `
     <div id="f-time-log"></div>
 
     <div class="notes-head">
-      <span class="micro">Source</span>
-    </div>
-    <div id="f-origin" class="source-line"></div>
-
-    <div class="notes-head">
       <span class="micro">Attachments</span>
       <span id="f-drop-hint" class="micro dim">paste or drop an image</span>
     </div>
@@ -96,7 +91,25 @@ export const PANEL_HTML = `
     </div>
     <div id="f-notes"></div>
     <textarea id="f-new-note" rows="1" class="grow"></textarea>
-    <button id="f-note-add" class="micro">Add note</button>
+    <span class="note-compose-foot">
+      <button id="f-note-add" class="micro" type="button">Save</button>
+      <button id="f-note-cancel" class="micro" type="button">Cancel</button>
+    </span>
+
+    <div class="notes-head" id="f-todo-head">
+      <span class="micro">Todos <span id="f-todo-count" class="dim"></span></span>
+    </div>
+    <div id="f-todos"></div>
+    <input id="f-new-todo" type="text" class="field-input" placeholder="Add a todo…" />
+    <span class="note-compose-foot">
+      <button id="f-todo-add" class="micro" type="button">Add</button>
+      <button id="f-todo-cancel" class="micro" type="button">Cancel</button>
+    </span>
+
+    <div class="notes-head">
+      <span class="micro">Source</span>
+    </div>
+    <div id="f-origin" class="source-line"></div>
 
     <div class="foot">
       <button id="f-delete" class="danger micro">Delete card</button>
@@ -156,6 +169,13 @@ export function panelElements(doc = document) {
     notes: byId('f-notes'),
     newNote: byId('f-new-note'),
     noteAdd: byId('f-note-add'),
+    noteCancel: byId('f-note-cancel'),
+    todos: byId('f-todos'),
+    todoHead: byId('f-todo-head'),
+    todoCount: byId('f-todo-count'),
+    newTodo: byId('f-new-todo'),
+    todoAdd: byId('f-todo-add'),
+    todoCancel: byId('f-todo-cancel'),
     origin: byId('f-origin'),
     deleteButton: byId('f-delete'),
     commit: byId('f-close'),

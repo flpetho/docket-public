@@ -165,6 +165,72 @@ test('advancing a watermark leaves other projects alone', () => {
   assert.equal(before.docket, SINCE) // not mutated
 })
 
+// ---- an edited note is news again -----------------------------------------
+
+/**
+ * `at` orders the thread and must never move, so without this the owner could
+ * correct a note and the next session would never see the correction — the
+ * watermark is already past its `at`.
+ */
+
+test('a note edited after the watermark is news, even though its at is older', () => {
+  const result = boardNews({
+    slug: 'docket',
+    doc: doc([card({ notes: [{ ...note(OWNER, '2026-08-22T00:30:00Z', 'corrected'), editedAt: '2026-08-22T02:00:00Z' }] })]),
+    since: SINCE,
+  })
+  assert.equal(result.notes.length, 1)
+  assert.equal(result.notes[0].text, 'corrected')
+})
+
+test('a note edited BEFORE the watermark is not news', () => {
+  const result = boardNews({
+    slug: 'docket',
+    doc: doc([card({ notes: [{ ...note(OWNER, '2026-08-22T00:00:00Z', 'old'), editedAt: '2026-08-22T00:30:00Z' }] })]),
+    since: SINCE,
+  })
+  assert.deepEqual(result.notes, [])
+})
+
+test('an unedited note behaves exactly as before', () => {
+  const stale = doc([card({ notes: [note(OWNER, '2026-08-22T00:30:00Z', 'old')] })])
+  const fresh = doc([card({ notes: [note(OWNER, '2026-08-22T02:00:00Z', 'new')] })])
+  assert.deepEqual(boardNews({ slug: 'docket', doc: stale, since: SINCE }).notes, [])
+  assert.equal(boardNews({ slug: 'docket', doc: fresh, since: SINCE }).notes.length, 1)
+})
+
+test("an edited CLAUDE note is never news, whatever its editedAt says", () => {
+  // The cheapest catastrophic failure available here: a reporter that hands
+  // back Claude's own notes produces an agent in conversation with itself, and
+  // with tell.js wired to the phone, a phone that buzzes all night. editedAt is
+  // a second field that reaches this filter, so it is pinned by construction.
+  const result = boardNews({
+    slug: 'docket',
+    doc: doc([card({ notes: [{ ...note('claude', '2026-08-22T00:30:00Z', 'VERDICT: meets'), editedAt: '2026-08-22T23:59:00Z' }] })]),
+    since: SINCE,
+  })
+  assert.deepEqual(result.notes, [])
+})
+
+test('an edited note is still reported and ordered by its original at', () => {
+  // The thread's order is the conversation's order. Fixing a typo must not move
+  // a note to the bottom of what the session reads.
+  const result = boardNews({
+    slug: 'docket',
+    doc: doc([
+      card({
+        notes: [
+          { ...note(OWNER, '2026-08-22T02:00:00Z', 'said first'), editedAt: '2026-08-22T04:00:00Z' },
+          note(OWNER, '2026-08-22T03:00:00Z', 'said second'),
+        ],
+      }),
+    ]),
+    since: SINCE,
+  })
+  assert.deepEqual(result.notes.map((n) => n.text), ['said first', 'said second'])
+  assert.equal(result.notes[0].at, '2026-08-22T02:00:00Z', 'the reported at is the original')
+})
+
 test('summarise interleaves notes and captures across boards, oldest first', () => {
   const items = summarise([
     { notes: [{ at: '2026-08-22T03:00:00Z', project: 'a' }], cards: [{ at: '2026-08-22T01:00:00Z', project: 'a' }] },

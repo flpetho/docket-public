@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { defaultConfig } from '../../board/src/config.js'
+import { normalizeCard } from '../../board/src/card.js'
 import { addProject } from '../../board/src/registry.js'
-import { createTools, resolveProject } from '../src/tools.js'
+import { createTools, presentCard, resolveProject } from '../src/tools.js'
 
 const at = () => new Date('2026-08-21T12:00:00.000Z')
 
@@ -313,4 +314,126 @@ test('add without origin leaves it empty, as every capture path does', async () 
   const s = await sandbox()
   const { id } = await s.tools.add({ title: 'Plain' })
   assert.equal((await s.board()).cards.find((c) => c.id === id).origin, '')
+})
+
+// ---- editedAt across the bridge (spec: note edit) ----
+
+test('a note keeps its editedAt across the bridge', () => {
+  // presentCard rebuilds each note field by field, so a new field is dropped
+  // silently unless it is named here. Claude reading a stale note text would
+  // then contradict the board the owner is looking at.
+  const card = normalizeCard({
+    id: 'c1',
+    notes: [{ author: 'owner', at: '2026-09-23T10:00:00.000Z', text: 'corrected', editedAt: '2026-09-23T12:00:00.000Z' }],
+  })
+  const [note] = presentCard(card, '/tmp').notes
+  assert.equal(note.editedAt, '2026-09-23T12:00:00.000Z')
+  assert.equal(note.text, 'corrected')
+})
+
+test('an unedited note carries no editedAt key at all', () => {
+  const card = normalizeCard({ id: 'c1', notes: [{ author: 'owner', at: '2026-09-23T10:00:00.000Z', text: 'plain' }] })
+  const [note] = presentCard(card, '/tmp').notes
+  assert.ok(!('editedAt' in note), 'absent, not null — the two mean different things')
+})
+
+// ---- todos across the bridge (spec: note-edit-and-todos) -------------------
+
+test('a card reports its todos across the bridge', () => {
+  const card = normalizeCard({
+    id: 'c1',
+    todos: [{ id: 't1', text: 'read the spec', done: true, doneBy: 'claude', doneAt: '2026-09-23T10:00:00.000Z' }],
+  })
+  assert.deepEqual(presentCard(card, '/tmp').todos, [
+    { id: 't1', text: 'read the spec', done: true, doneBy: 'claude', doneAt: '2026-09-23T10:00:00.000Z' },
+  ])
+})
+
+test('a card with no todos reports an empty list, not undefined', () => {
+  assert.deepEqual(presentCard(normalizeCard({ id: 'c1' }), '/tmp').todos, [])
+})
+
+// ---- docket_todo ----------------------------------------------------------
+
+const withTodos = (todos) => card({ todos })
+
+test('the bridge adds a todo and hands back its id', async () => {
+  const s = await sandbox({ cards: [withTodos([])] })
+  const result = await s.tools.todo({ id: 'c1', action: 'add', text: 'screenshot at 390px' })
+  assert.match(result.todoId, /^todo-/)
+  const [saved] = (await s.board()).cards[0].todos
+  assert.equal(saved.text, 'screenshot at 390px')
+  assert.equal(saved.done, false)
+  assert.equal(saved.doneBy, null)
+})
+
+test('ticking through the bridge records claude, not owner', async () => {
+  // The one attribution on this board that can be honest: AUTHOR is a constant,
+  // so a box Claude ticked says so and the owner can tell which steps the agent
+  // claims from which they did themselves.
+  const s = await sandbox({ cards: [withTodos([{ id: 't1', text: 'x', done: false, doneBy: null, doneAt: null }])] })
+  await s.tools.todo({ id: 'c1', todoId: 't1', action: 'tick' })
+  const [saved] = (await s.board()).cards[0].todos
+  assert.equal(saved.done, true)
+  assert.equal(saved.doneBy, 'claude')
+  assert.ok(saved.doneAt, 'and when')
+})
+
+test('unticking through the bridge clears claude\'s claim', async () => {
+  const s = await sandbox({
+    cards: [withTodos([{ id: 't1', text: 'x', done: true, doneBy: 'claude', doneAt: '2026-09-23T10:00:00.000Z' }])],
+  })
+  await s.tools.todo({ id: 'c1', todoId: 't1', action: 'untick' })
+  const [saved] = (await s.board()).cards[0].todos
+  assert.equal(saved.done, false)
+  assert.equal(saved.doneBy, null)
+  assert.equal(saved.doneAt, null)
+})
+
+test('THE REFUSAL: the bridge will not remove a todo, and the board is untouched', async () => {
+  // Claude may work the list, not decide what is on it. Deleting a step the
+  // owner wrote has no good failure story — the same instinct as never moving
+  // a card into Loop on your own behalf.
+  const todos = [{ id: 't1', text: 'do not delete me', done: false, doneBy: null, doneAt: null }]
+  const s = await sandbox({ cards: [withTodos(todos)] })
+  const before = await s.board()
+  await assert.rejects(() => s.tools.todo({ id: 'c1', todoId: 't1', action: 'remove' }), /owner/i)
+  assert.deepEqual(await s.board(), before, 'nothing was written, not even a rev bump')
+})
+
+test('an unknown action is refused rather than guessed at', async () => {
+  const s = await sandbox({ cards: [withTodos([])] })
+  await assert.rejects(() => s.tools.todo({ id: 'c1', action: 'finish' }), /add, tick, untick/)
+})
+
+test('ticking a todo that is not there fails loudly', async () => {
+  const s = await sandbox({ cards: [withTodos([])] })
+  await assert.rejects(() => s.tools.todo({ id: 'c1', todoId: 'never', action: 'tick' }), /no todo "never"/)
+})
+
+test('adding an empty todo is refused', async () => {
+  const s = await sandbox({ cards: [withTodos([])] })
+  await assert.rejects(() => s.tools.todo({ id: 'c1', action: 'add', text: '   ' }), /text/)
+})
+
+test('a todo on a card that is not there fails loudly', async () => {
+  const s = await sandbox({ cards: [withTodos([])] })
+  await assert.rejects(() => s.tools.todo({ id: 'nope', action: 'add', text: 'x' }), /no card "nope"/)
+})
+
+test('THE RAW CARD: a card that predates this field has no todos key at all, and the bridge still works', async () => {
+  // readBoard never normalises — only a write does (board/src/store.js) — so
+  // every card on every real board today reaches this tool exactly like this:
+  // `card()` here carries no `todos` key, not an empty array, because that is
+  // what sandbox() writes straight to disk with no normalisation in between.
+  // Every other test in this file builds cards through withTodos([...]), which
+  // already supplies an array — none of them would have caught this. Found by
+  // hand against a real board before this test existed: the bridge
+  // threw "a todo needs text" on a card whose text was perfectly fine, because
+  // `card.todos` was undefined and addTodo correctly refused it.
+  const s = await sandbox({ cards: [card()] })
+  const result = await s.tools.todo({ id: 'c1', action: 'add', text: 'first todo on a legacy card' })
+  assert.match(result.todoId, /^todo-/)
+  const [saved] = (await s.board()).cards[0].todos
+  assert.equal(saved.text, 'first todo on a legacy card')
 })

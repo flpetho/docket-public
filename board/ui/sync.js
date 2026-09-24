@@ -14,6 +14,22 @@ const SAFETY_POLL_MS = 60_000
 const MAX_CONFLICT_REPLAYS = 3
 
 /**
+ * Undo a mutator that changed something and then gave up.
+ *
+ * `false` means "the thing I wanted is gone", but a mutator is free to
+ * discover that halfway through. Without this, the abandoned change stays in
+ * the array and the next successful push carries it to the server — an edit
+ * reported lost arriving anyway, attached to an unrelated save.
+ *
+ * Restores IN PLACE: `doc.cards` is held across renders and `replayOnto` is
+ * handed the caller's array, so neither may be rebound.
+ */
+const restoreInto = (cards, snapshot) => {
+  cards.length = 0
+  cards.push(...snapshot)
+}
+
+/**
  * Re-applies edits onto cards that arrived while they were in flight.
  *
  * Pure, so the part that decides whether the owner's edit survived is testable
@@ -24,7 +40,11 @@ const MAX_CONFLICT_REPLAYS = 3
 export function replayOnto(cards, mutations) {
   const lost = []
   for (const fn of mutations) {
-    if (fn(cards) === false) lost.push(fn)
+    const snapshot = structuredClone(cards)
+    if (fn(cards) === false) {
+      restoreInto(cards, snapshot)
+      lost.push(fn)
+    }
   }
   return { applied: mutations.length - lost.length, lost }
 }
@@ -124,8 +144,21 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
    */
   function mutate(fn) {
     if (!doc) return Promise.resolve('lost')
+    // Apply BEFORE queueing, and read the answer. `false` means the thing this
+    // mutation wanted is gone, which no retry and no replay can fix — so it is
+    // never queued and never pushed.
+    //
+    // The snapshot is what makes "never pushed" true. A mutator may change
+    // something and only then discover it must give up; push() serialises the
+    // whole cards array, so without restoring, that abandoned change would
+    // travel to the server inside the next unrelated save.
+    const snapshot = structuredClone(doc.cards)
+    if (fn(doc.cards) === false) {
+      restoreInto(doc.cards, snapshot)
+      onStatus('offline', 'your last edit could not be saved — its card is gone')
+      return Promise.resolve('lost')
+    }
     pending.push(fn)
-    fn(doc.cards)
     onDoc(doc)
     clearTimeout(pushTimer)
     onStatus('saving', 'saving…')

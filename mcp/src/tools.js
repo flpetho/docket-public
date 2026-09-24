@@ -6,9 +6,13 @@ import { canonical, findProjectRoot, readRegistry } from '../../board/src/regist
 import { readBoard, writeBoard } from '../../board/src/store.js'
 import { LOOP_COLUMN, parseBrief } from '../../board/ui/brief.js'
 import { formatDuration, totalMs } from '../../board/ui/time.js'
+// removeTodo is deliberately NOT imported: the bridge has no code path that
+// could call it. That is the refusal, enforced by absence rather than by a
+// check that could be edited away.
+import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
 
 /**
- * The six board tools, as pure functions over the store.
+ * The seven board tools, as pure functions over the store.
  *
  * Deliberately free of the MCP SDK and of zod: `server.js` is the only file that
  * knows about the protocol, so this logic is testable with zero dependencies and
@@ -108,11 +112,27 @@ export function presentCard(card, root) {
       total: formatDuration(totalMs(card.time)),
       sessions: card.time?.sessions ?? [],
     },
-    notes: card.notes.map((n) => ({ author: n.author, at: n.at, text: n.text })),
+    // editedAt only when there is one: absent and null mean different things,
+    // and this map drops any field it does not name.
+    notes: card.notes.map((n) => ({
+      author: n.author,
+      at: n.at,
+      text: n.text,
+      ...(n.editedAt ? { editedAt: n.editedAt } : {}),
+    })),
     // Loop cards report their brief, so the pre-flight pass is mechanical:
     // a card with nothing checkable under "Done when" gets escalated before any
     // work starts, rather than guessed at for four hours.
     ...(card.column === LOOP_COLUMN ? { brief: briefFor(card.detail) } : {}),
+    // Subtasks, READ-WRITE through this bridge, unlike time. The board is
+    // shared state: the owner writes the list, and Claude works it.
+    todos: (card.todos ?? []).map((t) => ({
+      id: t.id,
+      text: t.text,
+      done: t.done === true,
+      doneBy: t.doneBy ?? null,
+      doneAt: t.doneAt ?? null,
+    })),
     attachments: (card.attachments ?? []).map((a) => ({
       file: a.file,
       kind: a.kind,
@@ -242,6 +262,53 @@ export function createTools({ registryFile, cwd }) {
           card.notes.push({ author: AUTHOR, at: stamp(), text: String(text) })
           card.updatedAt = stamp()
           return { id, notes: card.notes.length }
+        },
+      })
+      return { project: slug, ...outcome }
+    },
+
+    /**
+     * Work the checklist on a card.
+     *
+     * add / tick / untick only. REMOVE IS REFUSED: Claude may work the list,
+     * not decide what is on it. Deleting a step the owner wrote is the one
+     * operation here with no good failure story, and the refusal is the same
+     * instinct as never moving a card into Loop on your own behalf.
+     */
+    async todo({ project, id, todoId, text, action } = {}) {
+      if (!id) throw new Error('id is required')
+      if (action === 'remove') {
+        throw new Error('removing a todo is the owner\'s call — tick, untick or add, or say what should go')
+      }
+      if (!['add', 'tick', 'untick'].includes(action)) {
+        throw new Error('action must be one of add, tick, untick')
+      }
+      const { root, slug } = await where(project)
+
+      const outcome = await mutate({
+        root,
+        apply: (cards) => {
+          const card = cards.find((c) => c.id === id)
+          if (!card) throw new Error(`no card "${id}" on this board`)
+          // readBoard never normalises (only a write does), so a card that
+          // predates this field arrives here with no todos key at all — same
+          // lazy-init idiom as time.js's `if (!card.time) card.time =
+          // emptyTime()`, applied at the one write path that needs it.
+          if (!Array.isArray(card.todos)) card.todos = []
+          if (action === 'add') {
+            const newId = newTodoId()
+            if (!addTodo(card.todos, { id: newId, text: String(text ?? '') })) {
+              throw new Error('a todo needs text')
+            }
+            card.updatedAt = stamp()
+            return { id, todoId: newId, todos: card.todos.length }
+          }
+          if (!todoId) throw new Error('todoId is required to tick or untick')
+          if (!setDone(card.todos, todoId, action === 'tick', { by: AUTHOR, at: stamp() })) {
+            throw new Error(`no todo "${todoId}" on this card, or it was already ${action}ed`)
+          }
+          card.updatedAt = stamp()
+          return { id, todoId, done: action === 'tick' }
         },
       })
       return { project: slug, ...outcome }

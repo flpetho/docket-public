@@ -124,6 +124,23 @@ server.registerTool(
 )
 
 server.registerTool(
+  'docket_todo',
+  {
+    title: 'Work a card\'s checklist',
+    description:
+      'Work the checklist on a card: add a step, or tick and untick one. The board is shared state — the owner writes the list and you work it. Removing a todo is refused; say what should go instead.',
+    inputSchema: {
+      project,
+      id: z.string().describe('Card id, from docket_board.'),
+      action: z.enum(['add', 'tick', 'untick']).describe('add a todo, or tick / untick an existing one.'),
+      todoId: z.string().optional().describe('Todo id, from docket_board. Required to tick or untick.'),
+      text: z.string().optional().describe('The todo text. Required for add.'),
+    },
+  },
+  run((args) => tools.todo(args)),
+)
+
+server.registerTool(
   'docket_delete',
   {
     title: 'Delete a card',
