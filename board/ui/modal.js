@@ -8,6 +8,7 @@
 import { linkify, relativeAge, tagColor } from './render.js'
 import { BRIEF_FIELDS, LOOP_COLUMN, joinBrief, parseBrief, splitBrief } from './brief.js'
 import { splitNote } from './note-lead.js'
+import { noteKey } from './note-edit.js'
 import {
   formatBudget,
   formatDuration,
@@ -20,6 +21,7 @@ import {
   validSpan,
 } from './time.js'
 import { PHONE_QUERY } from './phone.js'
+import { newTodoId, todoProgress } from './todos.js'
 
 /** Grows a textarea to fit its content. Five lines, and it works everywhere. */
 export function autoGrow(textarea) {
@@ -39,16 +41,19 @@ export function autoGrow(textarea) {
  * pre-fills the contract skeleton, so comparing against the detail as opened is
  * what stops an untouched draft asking a pointless question.
  */
-export function unsavedParts({ draft, draftDetailAtOpen, noteText }) {
+export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing }) {
   const bits = []
   if (draft && (String(draft.title ?? '').trim() || draft.detail !== draftDetailAtOpen)) {
     bits.push('this card')
   }
   if (String(noteText ?? '').trim()) bits.push('a note')
+  // An open note editor, same family as the two above: text the owner typed
+  // that a Close or an Escape must not discard silently.
+  if (editing) bits.push('an edit in progress')
   return bits
 }
 
-export function createModal({ elements, config, project, onChange, onAddNote, onCreate, onDelete, onNotice, onMoveBoard, onTimer, onDeleteNote }) {
+export function createModal({ elements, config, project, onChange, onAddNote, onCreate, onDelete, onNotice, onMoveBoard, onTimer, onDeleteNote, onEditNote, onTodo }) {
   const attachmentUrl = (file) =>
     `/api/attachment?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`
   let openId = null
@@ -155,11 +160,15 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       autoGrow(input)
     }
     paintContractStatus(card.detail)
-    // Open on arrival for a Loop card or any card with contract content; the
-    // owner's own toggle stands for as long as this card is open.
+    // Closed on arrival, always — the owner's own toggle stands for as long as
+    // this card stays open. It used to open itself for a Loop card or any card
+    // with contract content, which read as the panel deciding for the owner
+    // rather than the owner deciding. The one deliberate exception is line
+    // ~722 below: moving a card INTO Loop force-opens it, because that is a
+    // response to the owner's own action, not a default on arrival.
     if (contractCardId === card.id) return
     contractCardId = card.id
-    elements.contract.open = card.column === LOOP_COLUMN || Object.values(values).some(Boolean)
+    elements.contract.open = false
   }
   buildContract()
 
@@ -186,7 +195,83 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     }
   }
 
+  /**
+   * Swap a note's body for a textarea holding its text.
+   *
+   * The key is taken BEFORE the field is shown, so the edit still names the
+   * right note if the thread re-renders underneath — and the mutation returns
+   * false rather than rewriting a neighbour if it has gone.
+   */
+  const openEditor = (wrapper, note) => {
+    const key = noteKey(note)
+    const card = openId
+    const form = document.createElement('div')
+    form.className = 'note-edit'
+    const field = document.createElement('textarea')
+    field.rows = 1
+    field.className = 'grow'
+    field.value = note.text
+    const foot = document.createElement('div')
+    foot.className = 'note-edit-foot'
+    const save = document.createElement('button')
+    save.type = 'button'
+    save.className = 'micro'
+    save.textContent = 'Save'
+    const cancel = document.createElement('button')
+    cancel.type = 'button'
+    cancel.className = 'micro'
+    cancel.textContent = 'Cancel'
+    foot.append(save, cancel)
+    form.append(field, foot)
+
+    // Hide the rendered note rather than removing it: cancelling then restores
+    // it without a re-render, so nothing else on the panel moves.
+    for (const child of [...wrapper.children]) child.hidden = true
+    wrapper.append(form)
+    autoGrow(field)
+    field.focus()
+
+    const close = () => {
+      form.remove()
+      for (const child of [...wrapper.children]) child.hidden = false
+    }
+    const commit = async () => {
+      const text = field.value.trim()
+      if (!text || text === note.text) return close()
+      close()
+      const outcome = await onEditNote?.(card, key, text)
+      // The note is gone, or the board refused it. Put the owner's text back in
+      // front of them rather than discarding it silently — the whole reason
+      // mutate now reads its mutator's answer.
+      if (outcome === 'lost' && openId === card) {
+        onNotice?.('that note is gone — your edit was NOT saved')
+        openEditor(wrapper, { ...note, text })
+      }
+    }
+    field.addEventListener('input', () => autoGrow(field))
+    field.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        return close()
+      }
+      if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+      event.preventDefault()
+      commit()
+    })
+    save.addEventListener('click', commit)
+    cancel.addEventListener('click', close)
+  }
+
   const renderNotes = () => {
+    // An open editor holds text the owner typed and has not saved. Rebuilding
+    // the thread would destroy the textarea and lose it silently — and the
+    // board changes underneath on a 300s timer (drain and push), so this is a
+    // five-minute window, not a rare race. Guarded on the editor EXISTING
+    // rather than having focus: a typed-then-clicked-away edit is exactly the
+    // case card-mu7h7y2w-vtdz records losing for the Add time form.
+    // The cost is a thread that can go stale while an editor is open, which is
+    // the same trade paintTimeLog already makes, and it resolves on close.
+    if (elements.notes.querySelector('.note-edit')) return
     elements.notes.textContent = ''
     if (!current.notes.length) {
       const empty = document.createElement('div')
@@ -210,6 +295,15 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       const when = document.createElement('span')
       when.className = 'micro dim'
       when.textContent = relativeAge(note.at)
+      // A quiet marker, not a second timestamp: the thread's order is still by
+      // `at`, and 'edited 2h ago' beside 'said 5h ago' reads as two events.
+      if (note.editedAt) {
+        const edited = document.createElement('span')
+        edited.className = 'micro dim note-edited'
+        edited.textContent = 'edited'
+        edited.title = `edited ${relativeAge(note.editedAt)}`
+        when.append(edited)
+      }
       const remove = document.createElement('button')
       remove.type = 'button'
       remove.className = 'micro note-remove'
@@ -219,6 +313,18 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
         onDeleteNote?.(openId, noteIndex)
       })
       head.append(author, when, remove)
+      // EDIT only on the owner's own notes. Claude's notes carry the gate's
+      // verdicts, which are the evidence a skeptic reads — and the board cannot
+      // tell the owner from an agent driving their UI, so a rewritten verdict
+      // would leave nothing in the file showing which had happened.
+      if (note.author === 'owner') {
+        const edit = document.createElement('button')
+        edit.type = 'button'
+        edit.className = 'micro note-remove'
+        edit.textContent = 'edit'
+        edit.addEventListener('click', () => openEditor(wrapper, note))
+        head.append(edit)
+      }
       // The first paragraph shows; the rest opens on demand. Native <details>:
       // no state to keep, keyboard-accessible for free, and the snapshot does
       // exactly the same with the same splitNote. Spec: docs/specs/2026-09-11-note-tldr-design.md
@@ -246,6 +352,63 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
         wrapper.append(more)
       }
       elements.notes.append(wrapper)
+    }
+  }
+
+  /**
+   * The todo list, and the count in its head.
+   *
+   * Rebuilt whole on every render, like the notes. A checkbox has no caret to
+   * destroy, but it CAN hold focus — and rebuilding drops that unconditionally,
+   * which the owner felt as the panel jumping to the top on every tick (the
+   * lost focus fell through refresh()'s allowlist to the full paint() path,
+   * which repaints from scratch and resets scroll). Captured and restored by
+   * id here so the same tick that triggers the rebuild does not un-focus its
+   * own control.
+   */
+  const renderTodos = () => {
+    const todos = current.todos ?? []
+    const { done, total } = todoProgress(todos)
+    elements.todoCount.textContent = total ? `${done}/${total}` : ''
+    const focusedId = elements.todos.contains(document.activeElement)
+      ? document.activeElement.closest('.todo')?.dataset.todoId
+      : null
+    elements.todos.textContent = ''
+    for (const todo of todos) {
+      const row = document.createElement('div')
+      row.className = todo.done ? 'todo done' : 'todo'
+      row.dataset.todoId = todo.id
+      const box = document.createElement('input')
+      box.type = 'checkbox'
+      box.checked = todo.done === true
+      box.addEventListener('change', () => onTodo?.(openId, { type: 'done', id: todo.id, done: box.checked }))
+      const text = document.createElement('span')
+      text.className = 'todo-text'
+      text.textContent = todo.text
+      row.append(box, text)
+      // Who ticked it, when the answer is not 'you'. The bridge can say this
+      // honestly because AUTHOR is a constant; the browser only ever knows
+      // 'owner', so an owner-ticked box says nothing rather than something
+      // it cannot stand behind.
+      if (todo.done && todo.doneBy && todo.doneBy !== 'owner') {
+        const by = document.createElement('span')
+        by.className = 'micro dim todo-by'
+        by.textContent = todo.doneBy
+        if (todo.doneAt) by.title = `ticked ${relativeAge(todo.doneAt)}`
+        row.append(by)
+      }
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.className = 'micro todo-remove'
+      remove.textContent = 'remove'
+      remove.addEventListener('click', () => onTodo?.(openId, { type: 'remove', id: todo.id }))
+      row.append(remove)
+      elements.todos.append(row)
+      // If the todo the rebuild just replaced still exists, hand focus back —
+      // guarded, since a remove means it genuinely will not be found.
+      // preventScroll: true, or focus()'s own default scroll-into-view would
+      // reintroduce the jump this whole capture-and-restore exists to stop.
+      if (todo.id === focusedId) box.focus({ preventScroll: true })
     }
   }
 
@@ -526,6 +689,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     renderTags()
     renderAttachments()
     renderNotes()
+    renderTodos()
     renderTime()
     paintContract(card)
     for (const field of [elements.title, elements.detail, elements.newNote]) autoGrow(field)
@@ -621,11 +785,42 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     commitNote()
   })
   elements.noteAdd?.addEventListener('click', commitNote)
+  elements.noteCancel?.addEventListener('click', () => {
+    elements.newNote.value = ''
+    autoGrow(elements.newNote)
+  })
   // The hint has to be true on the device reading it: '⌘↵' is an instruction a
   // phone cannot follow.
   elements.newNote.placeholder = matchMedia(PHONE_QUERY).matches
-    ? 'Add a note, then tap Add note'
+    ? 'Add a note, then tap Save'
     : 'Add a note — ⌘↵'
+
+  const commitTodo = async () => {
+    const text = elements.newTodo.value.trim()
+    if (!text) return
+    if (draft) {
+      onNotice?.('add the card first — a todo needs a card to live on')
+      return
+    }
+    const target = openId
+    elements.newTodo.value = ''
+    const outcome = await onTodo?.(target, { type: 'add', id: newTodoId(), text })
+    // Same rule as the note composer: the owner typed it, so put it back
+    // rather than letting it disappear.
+    if (outcome === 'lost' && openId === target) elements.newTodo.value = text
+  }
+  elements.newTodo.addEventListener('keydown', (event) => {
+    // A todo is one line, so plain Enter commits — unlike the note field, where
+    // Enter has to stay a newline.
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    commitTodo()
+  })
+  elements.todoAdd?.addEventListener('click', commitTodo)
+  elements.todoCancel?.addEventListener('click', () => {
+    elements.newTodo.value = ''
+  })
+
   elements.deleteButton.addEventListener('click', () => {
     if (!openId) return
     if (!confirm(`Delete "${current.title}"? Its notes go with it.`)) return
@@ -649,7 +844,13 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   }
 
   /** What would be thrown away by dismissing right now. */
-  const unsaved = () => unsavedParts({ draft, draftDetailAtOpen, noteText: elements.newNote.value })
+  const unsaved = () =>
+    unsavedParts({
+      draft,
+      draftDetailAtOpen,
+      noteText: elements.newNote.value,
+      editing: Boolean(elements.notes.querySelector('.note-edit')),
+    })
 
   // Board, beside Column: pick another board and the card goes to its Inbox.
   // No confirm — a move is reversible with the same control on the other
@@ -679,6 +880,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     if (switching) {
       elements.newNote.value = ''
       autoGrow(elements.newNote)
+      elements.newTodo.value = ''
     }
     // Unhide *before* painting: autoGrow reads scrollHeight, and a hidden
     // element reports zero, which collapsed every field to a single line.
@@ -698,6 +900,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     draftDetailAtOpen = card.detail
     openId = card.id
     elements.newNote.value = ''
+    elements.newTodo.value = ''
     elements.overlay.hidden = false
     paint(card)
     paintFoot()
@@ -724,19 +927,26 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     if (!card || card.id !== openId) return
     const active = document.activeElement
     // Repainting while someone is typing would fight the caret; the field
-    // already holds the newest value.
+    // already holds the newest value. A checkbox inside .todo has no caret,
+    // but the full paint() path below rebuilds the panel from scratch and
+    // resets its scroll — routing it through the guarded branch instead is
+    // what keeps a tick from jumping the panel to the top.
     if (
       active === elements.title ||
       active === elements.detail ||
       active === elements.newNote ||
+      active === elements.newTodo ||
       active?.classList?.contains('contract-field') ||
-      active?.closest?.('#f-time-form')
+      active?.closest?.('#f-time-form') ||
+      active?.closest?.('.note-edit') ||
+      active?.closest?.('.todo')
     ) {
       current = card
       paintContractStatus(card.detail)
       renderTags()
       renderAttachments()
       renderNotes()
+      renderTodos()
       renderTime()
       return
     }
@@ -753,7 +963,20 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     contractCardId = null
     if (elements.timeForm) elements.timeForm.hidden = true
     stopTick()
+    // renderNotes() bails whenever a '.note-edit' form is present, so it can
+    // never destroy text the owner is mid-typing (see the guard's comment
+    // above). But that guard has no matching cleanup here: leaving the form in
+    // the DOM past this point means the NEXT open() calls paint() ->
+    // renderNotes(), sees the stale editor, and bails too — so the panel comes
+    // up showing this card's notes instead of the one just opened, holding an
+    // editor whose commit() still closes over the card that is no longer on
+    // screen. Removing it (not hiding — nothing here restores hidden note
+    // children; the next renderNotes() clears '#f-notes' wholesale and
+    // rebuilds it, so there is nothing to restore) is what lets renderNotes()
+    // work normally again.
+    elements.notes.querySelector('.note-edit')?.remove()
     elements.newNote.value = ''
+    elements.newTodo.value = ''
     elements.overlay.hidden = true
   }
 

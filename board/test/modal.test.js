@@ -60,6 +60,23 @@ test('a committed card with an empty note box asks nothing', () => {
   assert.deepEqual(unsavedParts({ draft: null, draftDetailAtOpen: '', noteText: '' }), [])
 })
 
+test('an open note editor counts, on its own and alongside the others', () => {
+  // The third thing a Close or an Escape must not discard silently — same
+  // family as an unsaved draft and a typed note, and it composes with both.
+  assert.deepEqual(
+    unsavedParts({ draft: null, draftDetailAtOpen: '', noteText: '', editing: true }),
+    ['an edit in progress'],
+  )
+  assert.deepEqual(
+    unsavedParts({ draft: null, draftDetailAtOpen: '', noteText: '', editing: false }),
+    [],
+  )
+  assert.deepEqual(
+    unsavedParts({ draft: draft({ title: 'x' }), draftDetailAtOpen: '', noteText: 'and a note', editing: true }),
+    ['this card', 'a note', 'an edit in progress'],
+  )
+})
+
 test('missing or malformed input does not throw', () => {
   for (const args of [
     {},

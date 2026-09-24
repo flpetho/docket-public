@@ -136,3 +136,41 @@ test('validateCard wants a due date as a day, not a timestamp', () => {
   assert.match(bad({ due: 5 }), /due/)
   assert.deepEqual(validateCard(normalizeCard({ id: 'a', title: 'A', due: '2026-10-01' }), COLUMNS), [])
 })
+
+test('a card from before the field gets an empty todo list, not undefined', () => {
+  // The same contract `time` took: no board migrates, and the first write to
+  // each board adds the field to every card, once.
+  assert.deepEqual(normalizeCard({ id: 'c1' }).todos, [])
+})
+
+test('todos survive normalisation intact', () => {
+  const todos = [{ id: 't1', text: 'read the spec', done: true, doneBy: 'claude', doneAt: '2026-09-23T10:00:00.000Z' }]
+  assert.deepEqual(normalizeCard({ id: 'c1', todos }).todos, todos)
+})
+
+test('a non-array todos is replaced rather than trusted', () => {
+  assert.deepEqual(normalizeCard({ id: 'c1', todos: 'nope' }).todos, [])
+})
+
+test('todos is a card key, so the store round-trips it', () => {
+  assert.ok(CARD_KEYS.includes('todos'))
+})
+
+test('validateCard rejects a todo missing its id', () => {
+  const card = normalizeCard({ id: 'c1', column: 'inbox', todos: [{ text: 'no id', done: false }] })
+  assert.ok(validateCard(card, ['inbox']).some((e) => /todo/.test(e)))
+})
+
+test('validateCard rejects a todo whose done is not a boolean', () => {
+  const card = normalizeCard({ id: 'c1', column: 'inbox', todos: [{ id: 't1', text: 'x', done: 'yes' }] })
+  assert.ok(validateCard(card, ['inbox']).some((e) => /todo/.test(e)))
+})
+
+test('validateCard accepts a well-formed todo list', () => {
+  const card = normalizeCard({
+    id: 'c1',
+    column: 'inbox',
+    todos: [{ id: 't1', text: 'x', done: false, doneBy: null, doneAt: null }],
+  })
+  assert.deepEqual(validateCard(card, ['inbox']), [])
+})

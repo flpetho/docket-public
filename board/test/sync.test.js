@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { replayOnto } from '../ui/sync.js'
+import { createSync, replayOnto } from '../ui/sync.js'
 
 /**
  * The conflict-replay half of the fix for the owner's 2026-08-23 report. A note
@@ -48,6 +48,90 @@ test('an edit whose card was deleted underneath is reported lost, not silently d
   assert.equal(result.lost.length, 1)
 })
 
+// ---- mutate honours its mutator's answer ----------------------------------
+
+/**
+ * The bug this closes: `mutate` applied the mutation and threw the answer away,
+ * so a mutation returning false — the card it wanted is gone — was queued
+ * anyway, pushed unchanged cards, got a 200, and resolved 'saved'. The owner
+ * was told their edit landed when nothing was written. Carded as
+ * card-mu7h71qd-3qsg and reported first in STATE.md's Next.
+ *
+ * No DOM is needed: mutate touches only fetch and setTimeout, both of which
+ * node has. EventSource is only reached by listen(), which these never call.
+ */
+const fakeResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  json: async () => body,
+})
+
+const BOARD = { rev: 1, cards: [{ id: 'a', notes: [] }] }
+
+/** Swaps global fetch for the duration, and hands the run its call log. */
+const withFetch = async (impl, run) => {
+  const original = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), method: init?.method ?? 'GET', init })
+    return impl(String(url), init)
+  }
+  try {
+    return await run(calls)
+  } finally {
+    globalThis.fetch = original
+  }
+}
+
+const loaded = async (impl, run) =>
+  withFetch(impl, async (calls) => {
+    const sync = createSync({ project: 'p', onDoc: () => {}, onStatus: () => {} })
+    await sync.load()
+    return run(sync, calls)
+  })
+
+test('a mutation that cannot apply resolves lost and never reaches the network', async () => {
+  await loaded(
+    () => fakeResponse(structuredClone(BOARD)),
+    async (sync, calls) => {
+      const outcome = await sync.mutate(() => false)
+      assert.equal(outcome, 'lost')
+      assert.deepEqual(calls.filter((c) => c.method === 'PUT'), [], 'nothing was pushed')
+    },
+  )
+})
+
+test('a mutation that changes something and THEN returns false is still not pushed', async () => {
+  // The guard is on the return value, not on whether anything moved. A partial
+  // mutation that then gives up must not be queued, or the 409 replay applies
+  // it a second time onto the server's cards.
+  await loaded(
+    () => fakeResponse(structuredClone(BOARD)),
+    async (sync, calls) => {
+      const outcome = await sync.mutate((cards) => {
+        cards[0].notes.push({ author: 'owner', at: 'x', text: 'half' })
+        return false
+      })
+      assert.equal(outcome, 'lost')
+      assert.deepEqual(calls.filter((c) => c.method === 'PUT'), [], 'nothing was pushed')
+    },
+  )
+})
+
+test('a mutation that applies still resolves saved and pushes exactly once', async () => {
+  // The regression guard. The fix must not make every mutation lost.
+  await loaded(
+    (url, init) => (init?.method === 'PUT' ? fakeResponse({ rev: 2 }) : fakeResponse(structuredClone(BOARD))),
+    async (sync, calls) => {
+      const outcome = await sync.mutate((cards) => {
+        cards[0].notes.push({ author: 'owner', at: 'x', text: 'real' })
+      })
+      assert.equal(outcome, 'saved')
+      assert.equal(calls.filter((c) => c.method === 'PUT').length, 1)
+    },
+  )
+})
+
 test('a partial loss still saves what it can', () => {
   const server = [card('alive')]
   const result = replayOnto(server, [noteAdder('alive', 'kept'), noteAdder('gone', 'lost')])
@@ -81,4 +165,61 @@ test('the mutation contract is false-means-lost, nothing else', () => {
   assert.equal(replayOnto(server, [() => null]).lost.length, 0)
   assert.equal(replayOnto(server, [() => 0]).lost.length, 0)
   assert.equal(replayOnto(server, [() => false]).lost.length, 1)
+})
+
+test('a mutation that gave up leaves nothing behind for the NEXT push to carry', async () => {
+  // The assertion the first version of this test was missing. Reporting 'lost'
+  // is not enough: push() serialises the whole cards array, so an abandoned
+  // change would reach the server inside the next unrelated save.
+  const sent = []
+  await loaded(
+    (url, init) => {
+      if (init?.method === 'PUT') {
+        sent.push(JSON.parse(init.body))
+        return fakeResponse({ rev: 2 })
+      }
+      return fakeResponse(structuredClone(BOARD))
+    },
+    async (sync) => {
+      await sync.mutate((cards) => {
+        cards[0].notes.push({ author: 'owner', at: 'x', text: 'abandoned' })
+        return false
+      })
+      await sync.mutate((cards) => {
+        cards[0].notes.push({ author: 'owner', at: 'y', text: 'real' })
+      })
+      assert.equal(sent.length, 1)
+      assert.deepEqual(sent[0].cards[0].notes.map((n) => n.text), ['real'])
+    },
+  )
+})
+
+test('replayOnto also undoes a mutation that gave up halfway', () => {
+  // Same property on the 409 path, which has had it since it was written.
+  const server = [card('a')]
+  const result = replayOnto(server, [
+    (cards) => {
+      cards[0].notes.push({ author: 'owner', at: 'x', text: 'abandoned' })
+      return false
+    },
+  ])
+  assert.equal(result.applied, 0)
+  assert.deepEqual(server[0].notes, [], 'the abandoned change is gone')
+})
+
+test('replayOnto still keeps the changes of mutations that succeeded', () => {
+  // The regression guard: the snapshot must not undo good work alongside bad.
+  const server = [card('a'), card('b')]
+  const result = replayOnto(server, [
+    (cards) => {
+      cards.find((c) => c.id === 'a').notes.push({ author: 'owner', at: 'x', text: 'kept' })
+    },
+    (cards) => {
+      cards.find((c) => c.id === 'b').notes.push({ author: 'owner', at: 'y', text: 'undone' })
+      return false
+    },
+  ])
+  assert.equal(result.applied, 1)
+  assert.deepEqual(server.find((c) => c.id === 'a').notes.map((n) => n.text), ['kept'])
+  assert.deepEqual(server.find((c) => c.id === 'b').notes, [])
 })

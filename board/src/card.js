@@ -17,6 +17,7 @@ export const CARD_KEYS = [
   'due',
   'attachments',
   'time',
+  'todos',
 ]
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
@@ -52,6 +53,11 @@ export function normalizeCard(input) {
       : null,
     due: typeof input.due === 'string' ? input.due : null,
     time: normalizeTime(input.time),
+    // Subtasks inside one card, shared: the owner adds and ticks them in the
+    // panel, and Claude ticks them through the bridge. Empty rather than absent
+    // for a card written before the field, exactly as `time` did — so no board
+    // migrates and the first write to each board adds it once.
+    todos: Array.isArray(input.todos) ? input.todos : [],
   }
 }
 
@@ -115,6 +121,22 @@ export function validateCard(card, columnKeys) {
     for (const session of card.time.sessions) {
       if (typeof session?.start !== 'string' || typeof session?.stop !== 'string' || typeof session?.note !== 'string') {
         errors.push('each time session needs string start, stop, and note')
+        break
+      }
+    }
+  }
+  if (!Array.isArray(card?.todos)) {
+    errors.push('todos must be an array')
+  } else {
+    for (const todo of card.todos) {
+      // The id is what makes a todo addressable across a 409 replay. A todo
+      // without one is unreachable by every mutation and every tool.
+      if (typeof todo?.id !== 'string' || !todo.id) {
+        errors.push('each todo needs a non-empty string id')
+        break
+      }
+      if (typeof todo?.text !== 'string' || typeof todo?.done !== 'boolean') {
+        errors.push('each todo needs a string text and a boolean done')
         break
       }
     }

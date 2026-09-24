@@ -602,6 +602,80 @@ h1 {
 .note-remove:hover {
   color: var(--fail);
 }
+.todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+.todo input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 0.95em;
+  height: 0.95em;
+  position: relative;
+  /* Judged by eye against .todo-text (line-height 1.5), not computed: a box
+     centred in the 1.5-line box reads high, because the glyphs' visual
+     weight sits below the line box's mathematical centre. The old 0.15rem,
+     and the line-box-centred formula before this, both drifted the moment
+     the metrics changed under them — this value is pinned to what actually
+     looked right on screen. */
+  margin: 0.58em 0 0;
+  background: var(--bg);
+  border: 1px solid var(--hair-lit);
+  cursor: pointer;
+}
+.todo input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* The tick: two rotated border edges, not an SVG — verified in this Chrome
+   (::after on an input with appearance:none renders reliably once the native
+   paint is removed) at both a live and a disabled:checked box, which is what
+   the snapshot needs. Fully token-following: the ink is `border-color:
+   var(--bg)`, not a baked literal, so it moves with the theme for free. */
+.todo input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  /* Percent of the checkbox's own box, not em, so the tick scales with it for
+     free — the phone breakpoint enlarges the box and needs no matching
+     override here. */
+  left: 29%;
+  top: 12%;
+  width: 28%;
+  height: 50%;
+  border: solid var(--bg);
+  border-width: 0 0.14em 0.14em 0;
+  transform: rotate(45deg);
+}
+.todo input[type='checkbox']:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.todo-text {
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  min-width: 0;
+  flex: 1;
+}
+.todo.done .todo-text {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1px;
+}
+.todo-by {
+  white-space: nowrap;
+}
+.todo-remove {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.todo:hover .todo-remove,
+.todo:focus-within .todo-remove {
+  opacity: 1;
+}
 /* A note's first paragraph shows; the rest sits behind this. Mirrored in the
    snapshot's inline CSS — same classes, same behaviour, no script either side. */
 .note-more > summary {
@@ -764,6 +838,12 @@ h1 {
    panel. Mirrored in the snapshot's inline CSS for the read-only half. */
 .time-chip.running {
   color: var(--accent);
+}
+.todo-chip {
+  white-space: nowrap;
+}
+.todo-chip.done {
+  color: var(--ok);
 }
 /* The foot is ONE line. Its spans used to shrink and wrap their own words —
    'just moved' became two lines beside a long origin or a long note count. The
@@ -933,6 +1013,26 @@ h1 {
   align-items: baseline;
   gap: 0.6rem;
 }
+.note-compose-foot {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+/* The edit form inside a note: same pair of controls, same shape as the
+   composer and the time form, so the panel has one idiom and not three. */
+.note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+.note-edit-foot {
+  display: flex;
+  gap: 0.5rem;
+}
+.note-edited {
+  margin-left: 0.35rem;
+}
 .note-text {
   font-size: 0.82rem;
   line-height: 1.55;
@@ -1086,10 +1186,6 @@ h1 {
 #phone-nav {
   display: none;
 }
-/* Only a phone needs it: ⌘↵ commits a note everywhere a modifier key exists. */
-#f-note-add {
-  display: none;
-}
 .pn-step {
   background: none;
   border: 1px solid var(--hair);
@@ -1178,9 +1274,18 @@ h1 {
   #status {
     overflow-wrap: break-word;
   }
-  #f-note-add {
+  /* The pair travels together: Cancel has no keyboard equivalent, so it gets
+     exactly the same full-width touch target Save does. A screenshot on
+     2026-09-23 caught the asymmetric version of this — Save alone hidden on
+     desktop by a rule written when it was the only button — and a phone rule
+     that styled only one of the two would reproduce the same mistake at this
+     breakpoint instead. */
+  .note-compose-foot {
+    flex-direction: column;
+  }
+  #f-note-add,
+  #f-note-cancel {
     display: block;
-    margin-top: 0.6rem;
     background: none;
     border: 1px solid var(--hair-lit);
     color: var(--fg);
@@ -1188,13 +1293,23 @@ h1 {
     width: 100%;
     cursor: pointer;
   }
-  #f-note-add:active {
+  #f-note-add:active,
+  #f-note-cancel:active {
     border-color: var(--accent);
     color: var(--accent);
   }
   .note-remove,
-  .session-remove {
+  .session-remove,
+  .todo-remove {
     opacity: 1;
+  }
+  /* A bigger tap target, still square. Margin re-judged by eye at this size
+     rather than reusing the desktop value verbatim — a taller box needs less
+     top offset to land on the same visual centre. */
+  .todo input[type='checkbox'] {
+    width: 1.1em;
+    height: 1.1em;
+    margin: 0.5em 0 0;
   }
   .time-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
