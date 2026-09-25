@@ -297,6 +297,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       for (const child of [...wrapper.children]) child.hidden = false
     }
     const commit = async () => {
+      if (gone) return
       const text = field.value.trim()
       if (!text || text === note.text) return close()
       close()
@@ -681,7 +682,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       elements.dropHint.textContent = 'add the card first — an attachment needs a card'
       return
     }
-    if (!openId) return
+    if (!openId || gone) return
     elements.dropHint.textContent = 'uploading…'
     try {
       const response = await fetch(`/api/attachment?project=${encodeURIComponent(project)}`, {
@@ -805,6 +806,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     }),
   )
   elements.tagInput.addEventListener('keydown', (event) => {
+    if (gone) return
     if (event.key !== 'Enter') return
     event.preventDefault()
     const tag = elements.tagInput.value.trim().toLowerCase()
@@ -922,7 +924,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   // otherwise be lost with the card that just left this board.
   elements.board?.addEventListener('change', async () => {
     const to = elements.board.value
-    if (!openId || draft || to === project) return
+    if (!openId || draft || gone || to === project) return
     const pending = unsaved()
     if (pending.length && !confirm(`Discard ${pending.join(' and ')} and move the card?`)) {
       elements.board.value = project

@@ -153,3 +153,14 @@ test('the offline disable lives in the modal, so it cannot re-enable a frozen pa
   }
   assert.match(src, /disabled = offline \|\| gone/)
 })
+
+test('the write paths that fire before applyEdit also refuse while frozen', () => {
+  // Found by review: ⌘↵ in an open note editor reached onEditNote and rebuilt
+  // a live editor inside the frozen panel; Enter in the tag field cleared the
+  // owner's typed tag before applyEdit refused it; a paste still uploaded a
+  // blob; an open Board list still posted a move.
+  assert.match(src, /const commit = async \(\) => \{\s*\n\s*if \(gone\) return/)
+  assert.match(src, /elements\.tagInput\.addEventListener\('keydown', \(event\) => \{\s*\n\s*if \(gone\) return/)
+  assert.match(src, /const upload = async \(blob\) => \{[\s\S]{0,200}if \(!openId \|\| gone\) return/)
+  assert.match(src, /if \(!openId \|\| draft \|\| gone \|\| to === project\) return/)
+})
