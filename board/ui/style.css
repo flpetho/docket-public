@@ -473,6 +473,26 @@ h1 {
   border: 1px solid var(--hair);
   padding: 1.4rem 1.5rem 1.2rem;
 }
+/* The open card left the board (card b2o5). Sticky, so it stays in view
+   while the owner scrolls to find the text they want to copy. */
+.gone-banner {
+  position: sticky;
+  top: -1.4rem;
+  z-index: 2;
+  margin: -1.4rem -1.5rem 0.8rem;
+  padding: 0.7rem 1.5rem;
+  background: #1a1510;
+  border-bottom: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+#panel.gone :is(textarea, input):read-only,
+#panel.gone :is(button, input):disabled {
+  opacity: 0.4;
+}
+#panel.gone :is(button, input):disabled {
+  cursor: not-allowed;
+}
 #panel label.micro,
 #panel .panel-col > span.micro {
   display: block;

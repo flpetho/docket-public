@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { unsavedParts } from '../ui/modal.js'
+import { cardVanished, unsavedParts } from '../ui/modal.js'
 
 const src = readFileSync(fileURLToPath(new URL('../ui/modal.js', import.meta.url)), 'utf8')
 
@@ -101,4 +101,55 @@ test('an attachment is refused on a draft rather than written for a card that ma
   // Uploading first would put bytes in .docket/attachments/ for a draft the owner
   // might discard. Same rule as a note: add the card first.
   assert.match(src, /const upload = async \(blob\) => \{\s*\n\s*if \(draft\)/)
+})
+
+/**
+ * The open card vanished — deleted, or moved to another board — versus the cases
+ * that look the same from outside because the card is legitimately absent. Both
+ * pages call refresh(cardById(openId)), so all refresh ever sees is "no card".
+ * Card b2o5: the owner ruled freeze-with-banner, never a silent close.
+ */
+const gone = (over = {}) => ({ openId: 'card-a', isDraft: false, creating: false, card: null, ...over })
+
+test('an open committed card missing from the document has vanished', () => {
+  assert.equal(cardVanished(gone()), true)
+})
+
+test('a draft is absent from the board on purpose and has not vanished', () => {
+  assert.equal(cardVanished(gone({ isDraft: true })), false)
+})
+
+test('a draft mid-commit is not yet on the board and has not vanished', () => {
+  // commitDraft clears the draft before onCreate lands; a frame in that window
+  // must not freeze the card the owner is in the middle of adding.
+  assert.equal(cardVanished(gone({ creating: true })), false)
+})
+
+test('nothing open means nothing vanished', () => {
+  assert.equal(cardVanished(gone({ openId: null })), false)
+})
+
+test('a card still in the document has not vanished', () => {
+  assert.equal(cardVanished(gone({ card: { id: 'card-a' } })), false)
+})
+
+test('a frozen panel refuses every write path, keyboard ones included', () => {
+  // A read-only textarea still takes ⌘↵, and a read-only input still submits
+  // its form on Enter — so disabling buttons is not enough on its own.
+  assert.match(src, /const applyEdit = \(fn\) => \{\s*\n\s*if \(gone\) return/)
+  assert.match(src, /const commitNote = async \(\) => \{\s*\n\s*if \(gone\) return/)
+  assert.match(src, /const commitTodo = async \(\) => \{\s*\n\s*if \(gone\) return/)
+  assert.match(src, /timeForm\?\.addEventListener\('submit'[\s\S]{0,120}if \(!openId \|\| draft \|\| gone\) return/)
+})
+
+test('the offline disable lives in the modal, so it cannot re-enable a frozen panel', () => {
+  // Both pages used to toggle four panel controls on EVERY status change. The
+  // status that follows a vanishing card ("updated elsewhere") re-enabled them
+  // the instant after the freeze. One owner of the disabled state: the modal.
+  for (const page of ['app.js', 'dashboard.js']) {
+    const text = readFileSync(fileURLToPath(new URL(`../ui/${page}`, import.meta.url)), 'utf8')
+    assert.doesNotMatch(text, /toggleAttribute\('disabled'/, `${page} still reaches into the panel`)
+    assert.match(text, /modal\?\.setOffline\(kind === 'offline'\)/, `${page} does not tell the modal`)
+  }
+  assert.match(src, /disabled = offline \|\| gone/)
 })
