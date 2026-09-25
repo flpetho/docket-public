@@ -53,6 +53,17 @@ export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing }) {
   return bits
 }
 
+/**
+ * Has the open card vanished — deleted, or moved to another board — rather than
+ * being legitimately absent? Both pages call refresh(cardById(openId)), so all
+ * refresh ever sees is "no card"; a draft and a draft mid-commit look identical
+ * to a deleted card from there. Pure and exported for the same reason as
+ * unsavedParts. Card b2o5.
+ */
+export function cardVanished({ openId, isDraft, creating, card }) {
+  return openId !== null && !isDraft && !creating && !card
+}
+
 export function createModal({ elements, config, project, onChange, onAddNote, onCreate, onDelete, onNotice, onMoveBoard, onTimer, onDeleteNote, onEditNote, onTodo }) {
   const attachmentUrl = (file) =>
     `/api/attachment?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`
@@ -63,6 +74,56 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   // board state. It is lost on reload, and that is the honest trade.
   let draft = null
   let draftDetailAtOpen = ''
+  // The open card is no longer on the board. The panel freezes rather than
+  // closing, because closing would throw away whatever the owner had typed —
+  // the thing the 2026-08-23 note-draft fix was written to protect. Text fields
+  // go read-only, not disabled, so their contents stay selectable and copyable.
+  let gone = false
+  // commitDraft clears the draft before onCreate lands; this covers that window.
+  let creating = false
+  const frozen = new Map()
+  const TEXTUAL = new Set(['text', 'number', 'date', 'time', 'search', 'url'])
+  // Offline is read-only. These four write without going through the sync
+  // layer's own offline handling, so they say so themselves. They used to be
+  // toggled by each page on every status change, which re-enabled them the
+  // instant after a freeze; now the modal is their one owner, and both reasons
+  // to be disabled are weighed together.
+  let offline = false
+  const guarded = () =>
+    [elements.board?.querySelector('.dd-trigger'), elements.timeToggle, elements.timeAdd, elements.addSave].filter(Boolean)
+  const paintGuarded = () => {
+    for (const el of guarded()) el.disabled = offline || gone
+  }
+  const setOffline = (next) => {
+    offline = next
+    paintGuarded()
+  }
+  const freeze = () => {
+    gone = true
+    stopTick()
+    elements.panel.classList.add('gone')
+    if (elements.gone) elements.gone.hidden = false
+    const own = new Set(guarded())
+    for (const el of elements.panel.querySelectorAll('input, textarea, select, button')) {
+      if (el === elements.commit || own.has(el)) continue
+      frozen.set(el, { disabled: el.disabled, readOnly: el.readOnly })
+      if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && TEXTUAL.has(el.type))) el.readOnly = true
+      else el.disabled = true
+    }
+    paintGuarded()
+  }
+  const thaw = () => {
+    if (!gone) return
+    gone = false
+    elements.panel.classList.remove('gone')
+    if (elements.gone) elements.gone.hidden = true
+    for (const [el, was] of frozen) {
+      el.disabled = was.disabled
+      el.readOnly = was.readOnly
+    }
+    frozen.clear()
+    paintGuarded()
+  }
 
   for (const field of [elements.title, elements.detail, elements.newNote]) {
     field.addEventListener('input', () => autoGrow(field))
@@ -236,6 +297,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       for (const child of [...wrapper.children]) child.hidden = false
     }
     const commit = async () => {
+      if (gone) return
       const text = field.value.trim()
       if (!text || text === note.text) return close()
       close()
@@ -552,7 +614,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   })
   timeForm?.addEventListener('submit', async (event) => {
     event.preventDefault()
-    if (!openId || draft) return
+    if (!openId || draft || gone) return
     const { start, stop } = formInstants()
     const problem = !start || !stop ? 'the date or a time is not valid' : validSpan(start, stop)
     if (problem) {
@@ -620,7 +682,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       elements.dropHint.textContent = 'add the card first — an attachment needs a card'
       return
     }
-    if (!openId) return
+    if (!openId || gone) return
     elements.dropHint.textContent = 'uploading…'
     try {
       const response = await fetch(`/api/attachment?project=${encodeURIComponent(project)}`, {
@@ -702,6 +764,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
    * fight the caret.
    */
   const applyEdit = (fn) => {
+    if (gone) return
     if (draft) return void fn(draft)
     onChange(openId, fn)
   }
@@ -743,6 +806,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     }),
   )
   elements.tagInput.addEventListener('keydown', (event) => {
+    if (gone) return
     if (event.key !== 'Enter') return
     event.preventDefault()
     const tag = elements.tagInput.value.trim().toLowerCase()
@@ -758,6 +822,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   // was a dead end, which breaks the protocol's 'every card gets a note' at
   // exactly the moment the owner is most likely to be holding a phone.
   const commitNote = async () => {
+    if (gone) return
     const text = elements.newNote.value.trim()
     if (!text) return
     if (draft) {
@@ -796,6 +861,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     : 'Add a note — ⌘↵'
 
   const commitTodo = async () => {
+    if (gone) return
     const text = elements.newTodo.value.trim()
     if (!text) return
     if (draft) {
@@ -858,7 +924,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   // otherwise be lost with the card that just left this board.
   elements.board?.addEventListener('change', async () => {
     const to = elements.board.value
-    if (!openId || draft || to === project) return
+    if (!openId || draft || gone || to === project) return
     const pending = unsaved()
     if (pending.length && !confirm(`Discard ${pending.join(' and ')} and move the card?`)) {
       elements.board.value = project
@@ -870,6 +936,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   })
 
   function open(card) {
+    thaw()
     const switching = openId !== card.id
     draft = null
     draftDetailAtOpen = ''
@@ -896,6 +963,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
    * authorization to start unattended work was produced by opening a form.
    */
   function openDraft(card) {
+    thaw()
     draft = card
     draftDetailAtOpen = card.detail
     openId = card.id
@@ -912,7 +980,10 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     if (!card) return
     draft = null
     paintFoot()
-    const outcome = await onCreate(card)
+    creating = true
+    const outcome = await onCreate(card).finally(() => {
+      creating = false
+    })
     if (outcome === 'lost') {
       // Put the owner back where they were rather than pretending it worked.
       draft = card
@@ -924,7 +995,14 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   }
 
   function refresh(card) {
+    if (cardVanished({ openId, isDraft: draft !== null, creating, card })) return void (gone || freeze())
     if (!card || card.id !== openId) return
+    // Back again — an undo, a revert, a git pull. Live again, and repainted
+    // below from the card as it now stands.
+    if (gone) {
+      thaw()
+      return void paint(card)
+    }
     const active = document.activeElement
     // Repainting while someone is typing would fight the caret; the field
     // already holds the newest value. A checkbox inside .todo has no caret,
@@ -956,6 +1034,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   function close({ force = false } = {}) {
     const pending = unsaved()
     if (!force && pending.length && !confirm(`Discard ${pending.join(' and ')}?`)) return
+    thaw()
     draft = null
     draftDetailAtOpen = ''
     openId = null
@@ -987,6 +1066,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     openDraft,
     close,
     refresh,
+    setOffline,
     get openId() { return openId },
     get isDraft() { return draft !== null },
   }

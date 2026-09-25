@@ -45,12 +45,8 @@ const setStatus = (kind, text) => {
   const status = $('status')
   status.className = `micro ${kind}`
   status.textContent = text
-  // Offline is read-only. The panel's Board dropdown is the one control that
-  // writes without going through sync — it POSTs /api/move itself — so it says
-  // so, exactly as the board does. Same list of selectors, same reason.
-  for (const selector of ['#f-board .dd-trigger', '#f-time-toggle', '#f-time-add', '#f-add-save']) {
-    document.querySelector(selector)?.toggleAttribute('disabled', kind === 'offline')
-  }
+  // Offline is read-only; the panel knows which of its controls that reaches.
+  modal?.setOffline(kind === 'offline')
 }
 
 function renderTiles(cards, now) {

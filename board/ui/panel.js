@@ -19,6 +19,7 @@ import { createModal } from './modal.js'
 export const PANEL_HTML = `
 <div id="overlay" hidden>
   <div id="panel" role="dialog" aria-modal="true" aria-labelledby="f-title">
+    <p id="f-gone" class="gone-banner" role="alert" hidden>This card was deleted or moved to another board. Nothing here saves any more — copy what you need, then close.</p>
     <label class="micro" for="f-title">Title</label>
     <textarea id="f-title" rows="1" class="grow title-field"></textarea>
 
@@ -159,6 +160,7 @@ export function panelElements(doc = document) {
     addStop: byId('f-add-stop'),
     addMinutes: byId('f-add-minutes'),
     addNote: byId('f-add-note'),
+    addSave: byId('f-add-save'),
     addCancel: byId('f-add-cancel'),
     addError: byId('f-add-error'),
     estimate: byId('f-estimate'),
@@ -179,6 +181,7 @@ export function panelElements(doc = document) {
     origin: byId('f-origin'),
     deleteButton: byId('f-delete'),
     commit: byId('f-close'),
+    gone: byId('f-gone'),
   }
 }
 

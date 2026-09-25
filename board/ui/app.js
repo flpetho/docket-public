@@ -27,11 +27,8 @@ let lastSeen = 0
 const setStatus = (kind, text) => {
   statusElement.className = `micro ${kind}`
   statusElement.textContent = text
-  // Offline is read-only, and a move is the one write the panel makes on its
-  // own rather than through the sync layer, so the control says so itself.
-  for (const selector of ['#f-board .dd-trigger', '#f-time-toggle', '#f-time-add', '#f-add-save']) {
-    document.querySelector(selector)?.toggleAttribute('disabled', kind === 'offline')
-  }
+  // Offline is read-only; the panel knows which of its controls that reaches.
+  modal?.setOffline(kind === 'offline')
 }
 
 // The board reloads itself when its code changes — but only when nothing is at
