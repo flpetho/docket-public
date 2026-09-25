@@ -4,7 +4,7 @@
  * uses — sync.js PUTs the whole board with the rev it read and adopts on 409.
  * There is no second write path. Spec: docs/specs/2026-09-17-manual-time-and-dashboard-design.md
  */
-import { allSessions, barFor, dailyTotals, dayKey, dueStatus, money, perCard } from './dashboard-math.js'
+import { allSessions, barFor, dailyTotals, dayKey, dueStatus, money, perCard, timeFormHoldsEntry } from './dashboard-math.js'
 import { mountPanel } from './panel.js'
 import { createSync, loadProjects } from './sync.js'
 import {
@@ -219,6 +219,17 @@ const syncMinutes = () => {
   const minutes = start && stop ? Math.round((Date.parse(stop) - Date.parse(start)) / 60e3) : NaN
   $('add-minutes').value = minutes > 0 ? String(minutes) : ''
 }
+/** The Add time form's values, in the shape timeFormHoldsEntry compares. */
+const readForm = () => ({
+  date: $('add-date').value,
+  start: $('add-start').value,
+  stop: $('add-stop').value,
+  minutes: $('add-minutes').value,
+  note: $('add-note').value,
+})
+// What openDefaults last put in the form — the line between "untouched" and "entered".
+let formBaseline = {}
+
 function openDefaults() {
   const now = Date.now()
   const stopParts = localParts(new Date(now).toISOString())
@@ -227,17 +238,22 @@ function openDefaults() {
   $('add-start').value = startParts.date === stopParts.date ? startParts.clock : '00:00'
   $('add-stop').value = stopParts.clock
   syncMinutes()
+  formBaseline = readForm()
 }
 
 let uiVersion = null
 let pendingReload = false
 /**
- * Safe to reload? Not while the Add time form has focus, and not while a card
- * is open — that is #27's rule, and the panel here holds exactly what it was
- * written to protect: an unsaved edit and a half-typed note.
+ * Safe to reload? Not while the Add time form holds anything the owner entered,
+ * and not while a card is open — that is #27's rule, and the panel here holds
+ * exactly what it was written to protect: an unsaved edit and a half-typed note.
+ *
+ * It used to ask whether the form had FOCUS, so an entry filled in and then
+ * clicked away from was lost to the next version (card vtdz). Focus alone no
+ * longer defers anything: an untouched form has nothing to lose, and a deferral
+ * held by focus would outlive the submit that emptied the form.
  */
-const idle = () =>
-  !document.getElementById('add').contains(document.activeElement) && !(modal && modal.openId !== null)
+const idle = () => !timeFormHoldsEntry(readForm(), formBaseline) && !(modal && modal.openId !== null)
 const reloadSoon = () => {
   setStatus('live', 'new version · reloading')
   setTimeout(() => location.reload(), 400)
@@ -252,7 +268,7 @@ const sync = createSync({
     if (version === uiVersion || pendingReload) return
     if (idle()) return reloadSoon()
     pendingReload = true
-    setStatus('live', 'new version · reloading when you leave the form')
+    setStatus('live', modal?.openId != null ? 'new version · reloading when the card closes' : 'new version · reloading once your entry is saved or cleared')
   },
 })
 
@@ -387,7 +403,9 @@ async function boot() {
     $('add-error').textContent = ''
     $('add-stop').value = parts.clock
   })
-  $('add').addEventListener('focusout', () => {
+  // Clearing the form by hand releases a deferred reload as it happens; there
+  // is no second event to wait for.
+  $('add').addEventListener('input', () => {
     if (pendingReload && idle()) reloadSoon()
   })
   $('add').addEventListener('submit', async (event) => {
@@ -407,6 +425,7 @@ async function boot() {
     $('add-error').textContent = ''
     $('add-note').value = ''
     openDefaults()
+    if (pendingReload && idle()) reloadSoon()
   })
 
   // Only now the first board read, with every control already live. It used to

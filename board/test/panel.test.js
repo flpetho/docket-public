@@ -137,3 +137,11 @@ test('the panel has a todos section with a list, a count and a composer', () => 
     { todos: 'f-todos', count: 'f-todo-count', field: 'f-new-todo', add: 'f-todo-add', cancel: 'f-todo-cancel' },
   )
 })
+
+test('a hidden time form is actually hidden', () => {
+  // .time-form set display:grid, which beat the [hidden] attribute, so the
+  // panel's Add time form showed on every open and the Add time button toggled
+  // nothing visible. Found 2026-09-24 in a screenshot of the vanished-card work.
+  const css = readFileSync(fileURLToPath(new URL('../ui/style.css', import.meta.url)), 'utf8')
+  assert.match(css, /\.time-form\[hidden\]\s*\{\s*display:\s*none/)
+})

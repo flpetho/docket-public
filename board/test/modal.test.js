@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { cardVanished, unsavedParts } from '../ui/modal.js'
+import { cardVanished, trapIndex, unsavedParts } from '../ui/modal.js'
 
 const src = readFileSync(fileURLToPath(new URL('../ui/modal.js', import.meta.url)), 'utf8')
 
@@ -163,4 +163,46 @@ test('the write paths that fire before applyEdit also refuse while frozen', () =
   assert.match(src, /elements\.tagInput\.addEventListener\('keydown', \(event\) => \{\s*\n\s*if \(gone\) return/)
   assert.match(src, /const upload = async \(blob\) => \{[\s\S]{0,200}if \(!openId \|\| gone\) return/)
   assert.match(src, /if \(!openId \|\| draft \|\| gone \|\| to === project\) return/)
+})
+
+// The panel is aria-modal, but Tab walked straight out of it into the board
+// behind. The wrap is pure so it can be tested without a browser.
+test('Tab from the last control wraps to the first', () => {
+  assert.equal(trapIndex(4, 5, false), 0)
+})
+
+test('Shift+Tab from the first control wraps to the last', () => {
+  assert.equal(trapIndex(0, 5, true), 4)
+})
+
+test('Tab in the middle is left to the browser', () => {
+  assert.equal(trapIndex(2, 5, false), null)
+  assert.equal(trapIndex(2, 5, true), null)
+})
+
+test('focus outside the panel is pulled back in', () => {
+  assert.equal(trapIndex(-1, 5, false), 0)
+  assert.equal(trapIndex(-1, 5, true), 4)
+})
+
+test('focus inside the panel but not in the list is left to the browser', () => {
+  // The Loop Contract's <summary> is focusable natively. Read as "outside", Tab
+  // from it jumped back to Title and the contract fields were unreachable.
+  assert.equal(trapIndex(-1, 5, false, true), null)
+  assert.equal(trapIndex(-1, 5, true, true), null)
+})
+
+test('a panel with nothing focusable traps nothing', () => {
+  assert.equal(trapIndex(-1, 0, false), null)
+})
+
+test('Escape closes the panel on both pages, from the modal, exactly once', () => {
+  // The board had it in app.js; the dashboard never did. It lives in the
+  // shared modal now, and app.js must not also close, or a declined
+  // "Discard …?" would be asked a second time.
+  // Anchored to the modal's own handler: a loose match also hit the note
+  // editor's Escape, which closes the editor, and passed with this one deleted.
+  assert.match(src, /if \(elements\.overlay\.hidden\) return\n\s*if \(event\.key === 'Escape'\) return void close\(\)/)
+  const app = readFileSync(fileURLToPath(new URL('../ui/app.js', import.meta.url)), 'utf8')
+  assert.doesNotMatch(app, /Escape/)
 })

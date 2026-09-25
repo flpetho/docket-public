@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { allSessions, dailyTotals, dueStatus, money, perCard } from '../ui/dashboard-math.js'
+import { allSessions, dailyTotals, dueStatus, money, perCard, timeFormHoldsEntry } from '../ui/dashboard-math.js'
 
 // The dashboard's arithmetic, pure, so the page and any later command agree.
 // Spec: docs/specs/2026-09-17-manual-time-and-dashboard-design.md
@@ -76,4 +76,42 @@ test('barFor: an estimate → the fraction of it that is spent, capped at the fu
 test('barFor: seconds past the estimate fill the bar without turning it over; a minute does', () => {
   assert.deepEqual(barFor({ ms: 120 * 60e3 + 2312, share: 1, estimateMinutes: 120 }), { kind: 'budget', fraction: 1, over: false })
   assert.deepEqual(barFor({ ms: 121 * 60e3, share: 1, estimateMinutes: 120 }), { kind: 'budget', fraction: 1, over: true })
+})
+
+// Card vtdz: the self-reload asked only whether focus was inside the Add time
+// form, so a filled-in entry the owner had clicked away from was thrown away by
+// the next UI version. "Entered" means changed from what openDefaults put there
+// — the clocks are pre-filled, so non-empty proves nothing.
+const baseline = { date: '2026-09-24', start: '11:00', stop: '12:00', minutes: '60', note: '' }
+
+test('an untouched form holds nothing, pre-filled clocks and all', () => {
+  assert.equal(timeFormHoldsEntry({ ...baseline }, baseline), false)
+})
+
+test('a typed description is an entry', () => {
+  assert.equal(timeFormHoldsEntry({ ...baseline, note: 'wrote the spec' }, baseline), true)
+})
+
+test('whitespace alone in the description is not an entry', () => {
+  assert.equal(timeFormHoldsEntry({ ...baseline, note: '   ' }, baseline), false)
+})
+
+test('a changed clock, date or duration is an entry', () => {
+  for (const change of [{ start: '09:30' }, { stop: '12:45' }, { date: '2026-09-23' }, { minutes: '90' }]) {
+    assert.equal(timeFormHoldsEntry({ ...baseline, ...change }, baseline), true, JSON.stringify(change))
+  }
+})
+
+test('a half-typed time reads as empty and still counts as an entry', () => {
+  // An <input type=time> reports '' until complete; that is a change, not idleness.
+  assert.equal(timeFormHoldsEntry({ ...baseline, start: '' }, baseline), true)
+})
+
+test('typing back to the defaults is idle again', () => {
+  assert.equal(timeFormHoldsEntry({ ...baseline, note: '' }, { ...baseline }), false)
+})
+
+test('missing input does not throw and counts as untouched', () => {
+  assert.equal(timeFormHoldsEntry({}, {}), false)
+  assert.equal(timeFormHoldsEntry(undefined, undefined), false)
 })
