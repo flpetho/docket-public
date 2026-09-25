@@ -45,7 +45,7 @@ const readJsonBody = (request) =>
  * the board file stays the single authority and an out-of-band edit (Claude's,
  * or a git pull) is never overwritten by stale memory.
  */
-export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_DIR }) {
+export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_DIR, watchUi = watch, uiRecheckMs = 60_000 }) {
   // Injectable so the tests can point it at a temp directory and change a file there.
   const ui = uiDir.endsWith(sep) ? uiDir : uiDir + sep
   const send = (response, status, body) => {
@@ -72,26 +72,44 @@ export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_
   // when it changes. A tab holding a stale stamp reloads itself once it is safe.
   // Same watcher idiom as the board files: the event is a hint, settle, re-read,
   // compare — so a touch that changes no byte announces nothing.
+  //
+  // The watcher is only the fast path. On 2026-09-18 it was measured missing a
+  // change 1 run in 8, and a miss had no second chance: the stamp stayed stale
+  // for the daemon's life. So the same re-read also runs whenever someone asks
+  // (/api/version, a new stream) and on a slow interval, and a read that throws
+  // simply leaves the next one to try. Every path compares content hashes, never
+  // mtime, so none of them can announce a touch.
   let uiVersion = null
-  const versionReady = readUiVersion(ui).then((version) => {
-    uiVersion = version
-    return version
-  })
-  const currentVersion = async () => uiVersion ?? versionReady
   const uiFrame = (version) => `data: ${JSON.stringify({ type: 'ui', version })}\n\n`
-  let uiTimer = null
-  const uiWatcher = watch(ui, () => {
-    clearTimeout(uiTimer)
-    uiTimer = setTimeout(async () => {
+  // Serialised, so a slow read that started first can never land last and put
+  // an older stamp back.
+  let uiCheck = Promise.resolve()
+  const recheckUi = () => {
+    uiCheck = uiCheck.then(async () => {
       const next = await readUiVersion(ui).catch(() => null)
       if (!next || next === uiVersion) return
+      const announce = uiVersion !== null
       uiVersion = next
+      if (!announce) return
       for (const stream of streams.values()) {
         for (const client of stream.clients) client.write(uiFrame(next))
       }
-    }, 150)
+    })
+    return uiCheck
+  }
+  const currentVersion = async () => {
+    await recheckUi()
+    return uiVersion
+  }
+  recheckUi()
+  let uiTimer = null
+  const uiWatcher = watchUi(ui, () => {
+    clearTimeout(uiTimer)
+    uiTimer = setTimeout(recheckUi, 150)
   })
   uiWatcher.on('error', () => {})
+  const uiInterval = setInterval(recheckUi, uiRecheckMs)
+  uiInterval.unref()
 
   const startStream = (entry, response) => {
     let stream = streams.get(entry.slug)
@@ -218,6 +236,11 @@ export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_
         const entry = await project(slug)
         if (!entry) return send(response, 404, { error: `unknown project ${slug ?? '(none)'}` })
         const doc = await readBoard(boardFileFor(entry.path)).catch(() => null)
+        // Every await happens before the headers. Once they are out the client
+        // can hang up and close() can run, and an await between here and
+        // startStream would let startStream open a watcher after close() had
+        // already swept — one nobody ever closes.
+        const version = await currentVersion()
         response.writeHead(200, {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
@@ -226,7 +249,7 @@ export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_
         response.write(': connected\n\n')
         // The stamp first, so a tab that reconnects after a daemon restart learns
         // at once whether the code it runs is the code being served.
-        response.write(uiFrame(await currentVersion()))
+        response.write(uiFrame(version))
         startStream(entry, response)
         const stream = streams.get(entry.slug)
         if (doc && stream.lastRev < doc.rev) stream.lastRev = doc.rev
@@ -315,6 +338,7 @@ export function createDaemon({ registryFile, now = () => new Date(), uiDir = UI_
     close: () =>
       new Promise((resolve) => {
         clearTimeout(uiTimer)
+        clearInterval(uiInterval)
         uiWatcher.close()
         for (const stream of streams.values()) {
           stream.watcher?.close()
