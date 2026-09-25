@@ -88,3 +88,17 @@ export function barFor(row) {
   const fraction = budget > 0 ? Math.min(1, row.ms / budget) : row.ms > 0 ? 1 : 0
   return { kind: 'budget', fraction, over }
 }
+
+/**
+ * Does the Add time form hold something the owner entered? Compared against
+ * what openDefaults last put there, never against empty: the clocks are
+ * pre-filled, so non-empty proves nothing. The card picker is left out on
+ * purpose — a re-render can change it without the owner, and a form that looks
+ * dirty forever defers the reload forever, which is the other failure.
+ * Card vtdz; the shape follows unsavedParts in modal.js.
+ */
+const FORM_FIELDS = ['date', 'start', 'stop', 'minutes']
+export function timeFormHoldsEntry(current = {}, baseline = {}) {
+  if (String(current?.note ?? '').trim() !== String(baseline?.note ?? '').trim()) return true
+  return FORM_FIELDS.some((key) => String(current?.[key] ?? '') !== String(baseline?.[key] ?? ''))
+}

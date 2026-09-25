@@ -350,7 +350,6 @@ async function boot() {
     paint(sync.doc)
   })
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') return modal.close()
     if (modal.openId || event.metaKey || event.ctrlKey) return
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
     if (event.key === '/') {

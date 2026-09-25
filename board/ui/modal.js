@@ -64,6 +64,22 @@ export function cardVanished({ openId, isDraft, creating, card }) {
   return openId !== null && !isDraft && !creating && !card
 }
 
+/**
+ * Where Tab should land to keep focus inside the panel, or null to let the
+ * browser move it. `index` is the focused control's position among the
+ * panel's focusable controls, -1 when it is not one of them. `inside` says
+ * whether focus is nonetheless within the panel — on an element the list does
+ * not name — in which case the browser knows better than a guess.
+ */
+export function trapIndex(index, count, backwards, inside = false) {
+  if (count === 0) return null
+  if (index === -1 && inside) return null
+  if (index === -1) return backwards ? count - 1 : 0
+  if (!backwards && index === count - 1) return 0
+  if (backwards && index === 0) return count - 1
+  return null
+}
+
 export function createModal({ elements, config, project, onChange, onAddNote, onCreate, onDelete, onNotice, onMoveBoard, onTimer, onDeleteNote, onEditNote, onTodo }) {
   const attachmentUrl = (file) =>
     `/api/attachment?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`
@@ -1060,6 +1076,25 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   }
 
   elements.commit?.addEventListener('click', () => (draft ? commitDraft() : close()))
+
+  // The panel is aria-modal, so the keyboard stays inside it: Escape closes
+  // (asking first if something would be lost, as Close does) and Tab wraps
+  // rather than walking into the page behind. Here, not in each page, so the
+  // board and the dashboard cannot drift — the dashboard never had either.
+  const FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
+  document.addEventListener('keydown', (event) => {
+    if (elements.overlay.hidden) return
+    if (event.key === 'Escape') return void close()
+    if (event.key !== 'Tab') return
+    const controls = [...elements.panel.querySelectorAll(FOCUSABLE)].filter(
+      (el) => !el.disabled && el.offsetParent !== null,
+    )
+    const active = document.activeElement
+    const target = trapIndex(controls.indexOf(active), controls.length, event.shiftKey, elements.panel.contains(active))
+    if (target === null) return
+    event.preventDefault()
+    controls[target].focus()
+  })
 
   return {
     open,

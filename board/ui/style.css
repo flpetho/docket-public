@@ -990,6 +990,10 @@ h1 {
   color: var(--fail);
 }
 /* The Add time form: a local date and clock, minutes linked to the stop. */
+/* display:grid would otherwise beat the [hidden] attribute. */
+.time-form[hidden] {
+  display: none;
+}
 .time-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
