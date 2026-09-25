@@ -14,7 +14,7 @@ import { addProject } from '../src/registry.js'
 
 const at = () => new Date('2026-09-16T12:00:00.000Z')
 
-async function harness() {
+async function harness(options = {}) {
   const home = await mkdtemp(join(tmpdir(), 'docket-home-'))
   const projectRoot = await mkdtemp(join(tmpdir(), 'docket-proj-'))
   const uiDir = await mkdtemp(join(tmpdir(), 'docket-ui-'))
@@ -25,7 +25,7 @@ async function harness() {
   await addProject(registryFile, { path: projectRoot, name: 'Test Project', now: at })
   await writeFile(join(uiDir, 'index.html'), '<main></main>')
   await writeFile(join(uiDir, 'style.css'), 'body{margin:0}')
-  const daemon = createDaemon({ registryFile, now: at, uiDir })
+  const daemon = createDaemon({ registryFile, now: at, uiDir, ...options })
   const port = await daemon.listen(0)
   return { uiDir, url: (path) => `http://127.0.0.1:${port}${path}`, close: () => daemon.close() }
 }
@@ -129,6 +129,78 @@ test('a touch that changes no byte sends no new frame', async () => {
         stream.until((p) => p.type === 'ui' && p.version !== first.version, 1200),
         /no matching SSE event/,
       )
+    } finally {
+      stream.close()
+    }
+  } finally {
+    await h.close()
+  }
+})
+
+// The watcher is one signal, and on 2026-09-18 it was measured missing a change
+// 1 run in 8 with nothing to recover it. These inject the miss — a watcher that
+// never fires — instead of waiting for the OS to drop an event.
+const deafWatch = () => ({ on() {}, close() {} })
+
+test('a missed watcher event still reaches /api/version', async () => {
+  const h = await harness({ watchUi: deafWatch })
+  try {
+    const { version: before } = await (await fetch(h.url('/api/version'))).json()
+    await writeFile(join(h.uiDir, 'style.css'), 'body{margin:1px}')
+    const { version: after } = await (await fetch(h.url('/api/version'))).json()
+    assert.notEqual(after, before)
+  } finally {
+    await h.close()
+  }
+})
+
+test('a missed watcher event still reaches the first frame of a new stream', async () => {
+  const h = await harness({ watchUi: deafWatch })
+  try {
+    const { version: before } = await (await fetch(h.url('/api/version'))).json()
+    await writeFile(join(h.uiDir, 'style.css'), 'body{margin:1px}')
+    const stream = tail(await fetch(h.url('/api/events?project=test-project')))
+    try {
+      const frame = await stream.until((p) => p.type === 'ui')
+      assert.notEqual(frame.version, before)
+    } finally {
+      stream.close()
+    }
+  } finally {
+    await h.close()
+  }
+})
+
+test('a missed watcher event reaches an already-open stream on the periodic re-check', async () => {
+  const h = await harness({ watchUi: deafWatch, uiRecheckMs: 150 })
+  try {
+    const stream = tail(await fetch(h.url('/api/events?project=test-project')))
+    try {
+      const first = await stream.until((p) => p.type === 'ui')
+      await writeFile(join(h.uiDir, 'style.css'), 'body{margin:1px}')
+      const frame = await stream.until((p) => p.type === 'ui' && p.version !== first.version, 2000)
+      assert.notEqual(frame.version, first.version)
+    } finally {
+      stream.close()
+    }
+  } finally {
+    await h.close()
+  }
+})
+
+test('the periodic re-check compares content, so a touch still sends nothing', async () => {
+  const h = await harness({ watchUi: deafWatch, uiRecheckMs: 100 })
+  try {
+    const stream = tail(await fetch(h.url('/api/events?project=test-project')))
+    try {
+      const first = await stream.until((p) => p.type === 'ui')
+      await writeFile(join(h.uiDir, 'style.css'), 'body{margin:0}')
+      await assert.rejects(
+        stream.until((p) => p.type === 'ui', 800),
+        /no matching SSE event/,
+        'not even a repeat of the same stamp',
+      )
+      assert.ok(first.version)
     } finally {
       stream.close()
     }
