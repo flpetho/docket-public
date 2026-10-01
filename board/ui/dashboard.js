@@ -14,6 +14,8 @@ import {
   formatSessionParts,
   localIso,
   localParts,
+  parseClock,
+  startBefore,
   setSessionNote,
   spanFromDuration,
   startTimer,
@@ -211,8 +213,8 @@ function render(next) {
 
 // ---- Add time: the same form as the panel, the same rules, the same door ----
 const formInstants = () => ({
-  start: localIso($('add-date').value, $('add-start').value),
-  stop: localIso($('add-date').value, $('add-stop').value),
+  start: localIso($('add-date').value, parseClock($('add-start').value)),
+  stop: localIso($('add-date').value, parseClock($('add-stop').value)),
 })
 const syncMinutes = () => {
   const { start, stop } = formInstants()
@@ -237,6 +239,8 @@ function openDefaults() {
   $('add-date').value = stopParts.date
   $('add-start').value = startParts.date === stopParts.date ? startParts.clock : '00:00'
   $('add-stop').value = stopParts.clock
+  $('add-start').removeAttribute('aria-invalid')
+  $('add-stop').removeAttribute('aria-invalid')
   syncMinutes()
   formBaseline = readForm()
 }
@@ -394,6 +398,28 @@ async function boot() {
   }).observe(overlayElement, { attributes: true, attributeFilter: ['hidden'] })
 
   for (const id of ['add-date', 'add-start', 'add-stop']) $(id).addEventListener('input', syncMinutes)
+  // The panel's typed clocks and chips, the same rules — see modal.js.
+  for (const id of ['add-start', 'add-stop']) {
+    $(id).addEventListener('blur', () => {
+      const el = $(id)
+      const clock = parseClock(el.value)
+      if (clock) el.value = clock
+      el.toggleAttribute('aria-invalid', Boolean(el.value.trim()) && !clock)
+    })
+    $(id).addEventListener('input', () => $(id).removeAttribute('aria-invalid'))
+  }
+  $('add-quick').addEventListener('click', (event) => {
+    const minutes = Number(event.target.closest('button[data-minutes]')?.dataset.minutes)
+    if (!minutes) return
+    const { clock, error } = startBefore($('add-date').value, $('add-stop').value, minutes)
+    $('add-error').textContent = error ?? ''
+    if (error) return
+    $('add-start').value = clock
+    $('add-start').removeAttribute('aria-invalid')
+    syncMinutes()
+    // A chip is an entry like typing is: the dirty-form guard must see it.
+    $('add').dispatchEvent(new Event('input', { bubbles: true }))
+  })
   $('add-minutes').addEventListener('input', () => {
     const { start } = formInstants()
     const stop = spanFromDuration(start, Number($('add-minutes').value))
@@ -402,6 +428,7 @@ async function boot() {
     if (parts.date !== $('add-date').value) return void ($('add-error').textContent = 'that many minutes would end on the next day')
     $('add-error').textContent = ''
     $('add-stop').value = parts.clock
+    $('add-stop').removeAttribute('aria-invalid')
   })
   // Clearing the form by hand releases a deferred reload as it happens; there
   // is no second event to wait for.
