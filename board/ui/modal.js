@@ -23,6 +23,7 @@ import {
   validSpan,
 } from './time.js'
 import { PHONE_QUERY } from './phone.js'
+import { timeFormHoldsEntry } from './dashboard-math.js'
 import { newTodoId, todoProgress } from './todos.js'
 
 /** Grows a textarea to fit its content. Five lines, and it works everywhere. */
@@ -43,7 +44,7 @@ export function autoGrow(textarea) {
  * pre-fills the contract skeleton, so comparing against the detail as opened is
  * what stops an untouched draft asking a pointless question.
  */
-export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing }) {
+export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing, timeEntry }) {
   const bits = []
   if (draft && (String(draft.title ?? '').trim() || draft.detail !== draftDetailAtOpen)) {
     bits.push('this card')
@@ -52,7 +53,23 @@ export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing }) {
   // An open note editor, same family as the two above: text the owner typed
   // that a Close or an Escape must not discard silently.
   if (editing) bits.push('an edit in progress')
+  // The panel's Add time form, once it holds something other than what it
+  // opened with. Card 9dq0: Close and Escape discarded it without asking.
+  if (timeEntry) bits.push('a time entry')
   return bits
+}
+
+/**
+ * What commitDraft does once onCreate answers. The await is a window in which
+ * the owner can close the panel or open another card, so the answer is judged
+ * against where the panel is NOW, never where it was. Card fzuf: assigning
+ * openId after the await left a hidden panel with a card "open", which turned
+ * off the board's shortcuts and deferred every self-reload for the tab's life.
+ */
+export function commitLanding({ openId, cardId, lost }) {
+  if (!lost) return 'done'
+  if (openId === cardId) return 'restore'
+  return openId === null ? 'reopen' : 'notice'
 }
 
 /**
@@ -593,6 +610,16 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     const minutes = start && stop ? Math.round((Date.parse(stop) - Date.parse(start)) / 60e3) : NaN
     elements.addMinutes.value = minutes > 0 ? String(minutes) : ''
   }
+  // The dashboard's form and this one hold the same five values, so the one
+  // rule for "the owner entered something" serves both. Card 9dq0.
+  const readTimeForm = () => ({
+    date: elements.addDate?.value,
+    start: elements.addStart?.value,
+    stop: elements.addStop?.value,
+    minutes: elements.addMinutes?.value,
+    note: elements.addNote?.value,
+  })
+  let timeBaseline = {}
   const openTimeForm = () => {
     if (!timeForm) return
     const now = Date.now()
@@ -607,6 +634,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     elements.addNote.value = ''
     elements.addError.textContent = ''
     syncMinutesFromClocks()
+    timeBaseline = readTimeForm()
     timeForm.hidden = false
     elements.addNote.focus()
   }
@@ -960,6 +988,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
       draftDetailAtOpen,
       noteText: elements.newNote.value,
       editing: Boolean(elements.notes.querySelector('.note-edit')),
+      timeEntry: Boolean(elements.timeForm && !elements.timeForm.hidden) && timeFormHoldsEntry(readTimeForm(), timeBaseline),
     })
 
   // Board, beside Column: pick another board and the card goes to its Inbox.
@@ -1028,14 +1057,17 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     const outcome = await onCreate(card).finally(() => {
       creating = false
     })
-    if (outcome === 'lost') {
+    // openId is already card.id from openDraft; nothing here may set it again.
+    const landing = commitLanding({ openId, cardId: card.id, lost: outcome === 'lost' })
+    if (landing === 'done') return
+    if (landing === 'restore') {
       // Put the owner back where they were rather than pretending it worked.
       draft = card
       paintFoot()
-      onNotice?.('could not add the card — nothing was saved')
-      return
+    } else if (landing === 'reopen') {
+      openDraft(card)
     }
-    openId = card.id
+    onNotice?.('could not add the card — nothing was saved')
   }
 
   function refresh(card) {

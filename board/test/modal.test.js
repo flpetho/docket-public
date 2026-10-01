@@ -206,3 +206,43 @@ test('Escape closes the panel on both pages, from the modal, exactly once', () =
   const app = readFileSync(fileURLToPath(new URL('../ui/app.js', import.meta.url)), 'utf8')
   assert.doesNotMatch(app, /Escape/)
 })
+
+import { commitLanding } from '../ui/modal.js'
+
+test('an Add time entry in the open panel counts as unsaved', () => {
+  // Card 9dq0: Close and Escape threw away a half-filled entry without asking.
+  // The caller decides whether the form holds an entry (timeFormHoldsEntry,
+  // against what it was opened with); this only has to name it.
+  assert.deepEqual(unsavedParts({ draft: null, noteText: '', timeEntry: true }), ['a time entry'])
+  assert.deepEqual(unsavedParts({ draft: null, noteText: '', timeEntry: false }), [])
+  assert.deepEqual(
+    unsavedParts({ draft: null, noteText: 'a note', editing: true, timeEntry: true }),
+    ['a note', 'an edit in progress', 'a time entry'],
+  )
+})
+
+test('the panel counts its time form through timeFormHoldsEntry, against what the form opened with', () => {
+  // Not against empty: the clocks are pre-filled, so a pristine form is not empty.
+  assert.match(src, /timeEntry:\s*[^,}]*timeFormHoldsEntry\(/)
+  assert.match(src, /timeBaseline\s*=\s*readTimeForm\(\)/, 'openTimeForm records the baseline')
+})
+
+test('a save that lands after the panel closed does not reopen a card, and a lost one is not dropped', () => {
+  // Card fzuf: commitDraft set openId after its await, so an Escape during the
+  // save left a hidden panel with openId set — every shortcut off and every
+  // self-reload deferred for the life of the tab.
+  assert.equal(commitLanding({ openId: 'c1', cardId: 'c1', lost: false }), 'done')
+  assert.equal(commitLanding({ openId: null, cardId: 'c1', lost: false }), 'done', 'closed: stays closed')
+  assert.equal(commitLanding({ openId: 'c2', cardId: 'c1', lost: false }), 'done', 'another card open: left alone')
+  assert.equal(commitLanding({ openId: 'c1', cardId: 'c1', lost: true }), 'restore')
+  // Nothing was saved and the owner already dismissed the panel: put the
+  // draft back in front of them rather than losing what they typed.
+  assert.equal(commitLanding({ openId: null, cardId: 'c1', lost: true }), 'reopen')
+  // Another card is open now; covering it would be worse. Say so instead.
+  assert.equal(commitLanding({ openId: 'c2', cardId: 'c1', lost: true }), 'notice')
+})
+
+test('commitDraft never assigns openId after its await', () => {
+  const body = src.slice(src.indexOf('async function commitDraft'), src.indexOf('function refresh('))
+  assert.doesNotMatch(body.slice(body.indexOf('await')), /openId\s*=/)
+})
