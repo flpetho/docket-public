@@ -18,6 +18,7 @@ export const CARD_KEYS = [
   'attachments',
   'time',
   'todos',
+  'verdicts',
 ]
 
 const EPOCH = '1970-01-01T00:00:00.000Z'
@@ -58,6 +59,11 @@ export function normalizeCard(input) {
     // for a card written before the field, exactly as `time` did — so no board
     // migrates and the first write to each board adds it once.
     todos: Array.isArray(input.todos) ? input.todos : [],
+    // The gate's rulings on a Loop card, oldest first: { result, at, evidence }.
+    // Written only by docket_verdict, the one bridge path from Loop to In
+    // review (the owner's ruling, 2026-10-06). A history rather than the latest,
+    // so strikes can be counted without another field.
+    verdicts: Array.isArray(input.verdicts) ? input.verdicts : [],
   }
 }
 
@@ -121,6 +127,16 @@ export function validateCard(card, columnKeys) {
     for (const session of card.time.sessions) {
       if (typeof session?.start !== 'string' || typeof session?.stop !== 'string' || typeof session?.note !== 'string') {
         errors.push('each time session needs string start, stop, and note')
+        break
+      }
+    }
+  }
+  if (!Array.isArray(card?.verdicts)) {
+    errors.push('verdicts must be an array')
+  } else {
+    for (const verdict of card.verdicts) {
+      if (!['meets', 'fails'].includes(verdict?.result) || typeof verdict?.at !== 'string' || typeof verdict?.evidence !== 'string') {
+        errors.push('each verdict needs result meets|fails, a string at, and string evidence')
         break
       }
     }

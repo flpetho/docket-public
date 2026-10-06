@@ -124,6 +124,24 @@ server.registerTool(
 )
 
 server.registerTool(
+  'docket_verdict',
+  {
+    title: 'Rule on a finished Loop card',
+    description:
+      'The gate\'s verdict on a card in Loop, and the ONLY way the bridge moves a Loop card to In review: meets moves it there, fails leaves it in Loop. Recorded on the card and as a note. For the docket-verifier — a builder never grades its own work. docket_update refuses Loop → In review and Loop → Done.',
+    inputSchema: {
+      project,
+      id: z.string().describe('Card id, from docket_board. Must be in Loop.'),
+      result: z.enum(['meets', 'fails']).describe('meets: every acceptance clause verified firsthand. fails: anything less.'),
+      evidence: z
+        .string()
+        .describe('What you ran and what each acceptance clause showed. Lead with one sentence a phone can triage from.'),
+    },
+  },
+  run((args) => tools.verdict(args)),
+)
+
+server.registerTool(
   'docket_todo',
   {
     title: 'Work a card\'s checklist',

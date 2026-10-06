@@ -174,3 +174,17 @@ test('validateCard accepts a well-formed todo list', () => {
   })
   assert.deepEqual(validateCard(card, ['inbox']), [])
 })
+
+test('a card carries its verdicts, empty for a card from before the field', () => {
+  assert.ok(CARD_KEYS.includes('verdicts'))
+  assert.deepEqual(normalizeCard({ id: 'x' }).verdicts, [])
+  const kept = [{ result: 'meets', at: '2026-10-06T00:00:00.000Z', evidence: 'ran it' }]
+  assert.deepEqual(normalizeCard({ id: 'x', verdicts: kept }).verdicts, kept)
+})
+
+test('a malformed verdict is refused by validation', () => {
+  const base = normalizeCard({ id: 'x', title: 't', column: 'loop' })
+  assert.deepEqual(validateCard({ ...base, verdicts: [{ result: 'meets', at: 'a', evidence: 'e' }] }, ['loop']), [])
+  assert.ok(validateCard({ ...base, verdicts: [{ result: 'maybe', at: 'a', evidence: 'e' }] }, ['loop']).length)
+  assert.ok(validateCard({ ...base, verdicts: 'meets' }, ['loop']).length)
+})
