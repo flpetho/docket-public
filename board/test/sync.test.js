@@ -315,3 +315,136 @@ test('an edit survives two conflicts in a row', async () => {
     },
   )
 })
+
+// ---- the second review, 2026-10-06 ---------------------------------------
+// Each of these pins one line a mutant could remove with the suite still green.
+
+/** A promise you resolve from outside: holds a PUT open until the test says. */
+const deferred = () => {
+  let resolve
+  const promise = new Promise((r) => (resolve = r))
+  return { promise, resolve }
+}
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms))
+
+test('a failure after a save rolls back only to that save, never to the load', async () => {
+  // Pins `confirmed = sentCards`. Without it a failure would roll the board
+  // back to how it loaded, and the next push would delete saved work.
+  let put = 0
+  const sent = []
+  await loaded(
+    (url, init) => {
+      if (init?.method !== 'PUT') return fakeResponse(structuredClone(BOARD))
+      put += 1
+      if (put === 2) throw new TypeError('network down')
+      sent.push(JSON.parse(init.body))
+      return fakeResponse({ rev: put + 1 })
+    },
+    async (sync) => {
+      assert.equal(await sync.mutate(noteAdder('a', 'first')), 'saved')
+      assert.equal(await sync.mutate(noteAdder('a', 'second')), 'lost')
+      assert.deepEqual(sync.doc.cards[0].notes.map((n) => n.text), ['first'], 'the saved note is still there')
+      assert.equal(await sync.mutate(noteAdder('a', 'third')), 'saved')
+      assert.deepEqual(sent.at(-1).cards[0].notes.map((n) => n.text), ['first', 'third'])
+    },
+  )
+})
+
+test('an edit made while a push fails is kept and pushed on its own', async () => {
+  // Pins the replay of pending inside rollBack: that edit has not been tried.
+  const hold = deferred()
+  let put = 0
+  const sent = []
+  await loaded(
+    async (url, init) => {
+      if (init?.method !== 'PUT') return fakeResponse(structuredClone(BOARD))
+      put += 1
+      if (put === 1) {
+        await hold.promise
+        throw new TypeError('network down')
+      }
+      sent.push(JSON.parse(init.body))
+      return fakeResponse({ rev: 9 })
+    },
+    async (sync) => {
+      const first = sync.mutate(noteAdder('a', 'in the failing push'))
+      await tick(450) // past the debounce: the first PUT is now in flight
+      const second = sync.mutate(noteAdder('a', 'typed meanwhile'))
+      hold.resolve()
+      assert.equal(await first, 'lost')
+      assert.deepEqual(sync.doc.cards[0].notes.map((n) => n.text), ['typed meanwhile'], 'kept on screen')
+      assert.equal(await second, 'saved')
+      assert.deepEqual(sent.at(-1).cards[0].notes.map((n) => n.text), ['typed meanwhile'])
+    },
+  )
+})
+
+test('an edit is told the fate of ITS push, not of the one in flight when it was made', async () => {
+  // settle() used to resolve every waiter, so an edit made during a push that
+  // succeeded was told 'saved' — its caller cleared the text — and then its own
+  // push failed and the rollback erased it. Each push answers its own edits.
+  const hold = deferred()
+  let put = 0
+  await loaded(
+    async (url, init) => {
+      if (init?.method !== 'PUT') return fakeResponse(structuredClone(BOARD))
+      put += 1
+      if (put === 1) {
+        await hold.promise
+        return fakeResponse({ rev: 2 })
+      }
+      throw new TypeError('network down')
+    },
+    async (sync) => {
+      const first = sync.mutate(noteAdder('a', 'A'))
+      await tick(450)
+      const second = sync.mutate(noteAdder('a', 'B'))
+      hold.resolve()
+      assert.equal(await first, 'saved')
+      assert.equal(await second, 'lost', 'B was in the push that failed')
+    },
+  )
+})
+
+test('one push at a time: an edit made during a push waits for it', async () => {
+  // Two PUTs in flight could let the second carry an edit the first then
+  // rolls back, and the save after that would delete it from the server.
+  const hold = deferred()
+  let inFlight = 0
+  let most = 0
+  await loaded(
+    async (url, init) => {
+      if (init?.method !== 'PUT') return fakeResponse(structuredClone(BOARD))
+      inFlight += 1
+      most = Math.max(most, inFlight)
+      if (inFlight === 1 && most === 1) await hold.promise
+      inFlight -= 1
+      return fakeResponse({ rev: 5 })
+    },
+    async (sync) => {
+      const first = sync.mutate(noteAdder('a', 'A'))
+      await tick(450)
+      const second = sync.mutate(noteAdder('a', 'B'))
+      await tick(900) // the second debounce has long expired
+      hold.resolve()
+      assert.equal(await first, 'saved')
+      assert.equal(await second, 'saved')
+      assert.equal(most, 1)
+    },
+  )
+})
+
+test('a 200 whose body cannot be read is still a save', async () => {
+  // The server holds the write. Rolling back would put the edit back in the
+  // owner's hands as lost, and a retry would apply it twice.
+  await loaded(
+    (url, init) =>
+      init?.method === 'PUT'
+        ? { ok: true, status: 200, json: async () => { throw new SyntaxError('truncated') } }
+        : fakeResponse(structuredClone(BOARD)),
+    async (sync) => {
+      assert.equal(await sync.mutate(noteAdder('a', 'landed')), 'saved')
+      assert.deepEqual(sync.doc.cards[0].notes.map((n) => n.text), ['landed'])
+    },
+  )
+})

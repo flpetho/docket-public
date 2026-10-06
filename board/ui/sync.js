@@ -55,18 +55,22 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
   let events = null
   // The mutations, not the resulting array. A 409 needs to re-apply the EDIT
   // onto the server's newer cards; replaying a stale array would clobber them.
+  // Each carries its own resolver, so a push answers for exactly the edits it
+  // carried — an edit made while another push was in flight hears about ITS
+  // push, never that one (the second review of card fzuf, 2026-10-06).
   let pending = []
-  let waiters = []
   // The cards as the server last confirmed them: what it sent us, or what it
   // accepted from us. A push that fails returns the board to this, so an edit
   // reported lost is not left on screen to ride along with the next save.
   let confirmed = []
+  // One push at a time. Two PUTs in flight could let the second carry an edit
+  // the first then rolls back, and the save after that would delete it.
+  let inFlight = false
 
-  const settle = (outcome) => {
-    const resolvers = waiters
-    waiters = []
-    for (const resolve of resolvers) resolve(outcome)
+  const settle = (entries, outcome) => {
+    for (const entry of entries) entry.resolve(outcome)
   }
+  const fns = (entries) => entries.map((entry) => entry.fn)
 
   const params = () => `?project=${encodeURIComponent(project)}`
 
@@ -80,12 +84,23 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
    * Undo what did not land. The board goes back to what the server confirmed,
    * then the edits still queued — made while the failed push was in flight —
    * are applied again, because they have not been tried yet and will push on
-   * their own timer. Card fzuf's review, 2026-10-06.
+   * their own timer. One that can no longer apply (a note on the card that
+   * just failed to be created) is answered lost here rather than pushed as a
+   * no-op and reported saved.
    */
   const rollBack = () => {
     restoreInto(doc.cards, structuredClone(confirmed))
-    replayOnto(doc.cards, pending)
+    const { lost } = replayOnto(doc.cards, fns(pending))
+    settle(pending.filter((entry) => lost.includes(entry.fn)), 'lost')
+    pending = pending.filter((entry) => !lost.includes(entry.fn))
     onDoc(doc)
+  }
+
+  /** The edits did not land: say so, put the board back, answer them. */
+  const fail = (entries, message) => {
+    rollBack()
+    onStatus('offline', message)
+    settle(entries, 'lost')
   }
 
   async function load() {
@@ -101,64 +116,89 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
     }
   }
 
-  async function push(replaysLeft = MAX_CONFLICT_REPLAYS) {
+  const schedule = () => {
+    clearTimeout(pushTimer)
+    pushTimer = setTimeout(flush, PUSH_DEBOUNCE_MS)
+  }
+
+  async function flush() {
     pushTimer = null
+    if (inFlight) return schedule()
+    if (!pending.length) return
+    inFlight = true
+    try {
+      await push()
+    } finally {
+      inFlight = false
+    }
+  }
+
+  async function push(replaysLeft = MAX_CONFLICT_REPLAYS) {
     const attempted = pending
     pending = []
+    // Cloned in the same tick as the body is serialised, so it is exactly
+    // what the server will hold if it answers 200.
     const sentCards = structuredClone(doc.cards)
+    let response
     try {
-      const response = await fetch(`/api/board${params()}`, {
+      response = await fetch(`/api/board${params()}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ rev: doc.rev, cards: doc.cards }),
       })
-
-      if (response.status === 409) {
-        // The server is newer. Adopt its cards and REPLAY the edits onto them.
-        // The previous version adopted and dropped them, which is how a note
-        // typed while another session wrote the same board was lost outright.
-        const server = await response.json()
-        // Anything that arrived during the await was applied to the array we are
-        // about to discard, so it has to be replayed too.
-        const toReplay = attempted.concat(pending)
-        pending = []
-        adopt(server)
-        const { applied, lost } = replayOnto(doc.cards, toReplay)
-        onDoc(doc)
-
-        if (applied === 0) {
-          // Every edit wanted a card that no longer exists. Nothing to retry.
-          onStatus('offline', 'your last edit could not be saved — its card is gone')
-          settle('lost')
-          return
-        }
-        if (replaysLeft <= 0) {
-          rollBack()
-          onStatus('offline', 'could not save — the board kept changing underneath')
-          settle('lost')
-          return
-        }
-        if (lost.length) onStatus('saving', `${lost.length} edit(s) could not be replayed`)
-        else onStatus('saving', `changed elsewhere — replaying your edit onto rev ${doc.rev}`)
-        // Queue the replayed edits again, ahead of anything newer. Without
-        // this the next push attempted nothing, so a SECOND conflict in a row
-        // had nothing to replay and dropped the edit as "its card is gone".
-        pending = toReplay.filter((fn) => !lost.includes(fn)).concat(pending)
-        return push(replaysLeft - 1)
-      }
-
-      if (!response.ok) throw new Error(`PUT ${response.status}`)
-      doc.rev = (await response.json()).rev
-      confirmed = sentCards
-      onStatus('live', `synced · rev ${doc.rev}`)
-      settle('saved')
     } catch {
       // Offline stays read-only: no queue, no retry. But say plainly that the
       // edit did not land, rather than implying it did.
-      rollBack()
-      onStatus('offline', 'save failed — daemon unreachable, your edit was NOT saved')
-      settle('lost')
+      return fail(attempted, 'save failed — daemon unreachable, your edit was NOT saved')
     }
+
+    if (response.status === 409) {
+      // The server is newer. Adopt its cards and REPLAY the edits onto them.
+      // The previous version adopted and dropped them, which is how a note
+      // typed while another session wrote the same board was lost outright.
+      let server
+      try {
+        server = await response.json()
+      } catch {
+        return fail(attempted, 'save failed — the daemon sent an unreadable conflict, your edit was NOT saved')
+      }
+      // Anything that arrived during the await was applied to the array we are
+      // about to discard, so it has to be replayed too.
+      const toReplay = attempted.concat(pending)
+      pending = []
+      adopt(server)
+      const { applied, lost } = replayOnto(doc.cards, fns(toReplay))
+      onDoc(doc)
+      settle(toReplay.filter((entry) => lost.includes(entry.fn)), 'lost')
+      const surviving = toReplay.filter((entry) => !lost.includes(entry.fn))
+
+      if (applied === 0) {
+        // Every edit wanted a card that no longer exists. Nothing to retry.
+        onStatus('offline', 'your last edit could not be saved — its card is gone')
+        return
+      }
+      if (replaysLeft <= 0) {
+        return fail(surviving, 'could not save — the board kept changing underneath')
+      }
+      if (lost.length) onStatus('saving', `${lost.length} edit(s) could not be replayed`)
+      else onStatus('saving', `changed elsewhere — replaying your edit onto rev ${doc.rev}`)
+      // Queue the replayed edits again, ahead of anything newer. Without
+      // this the next push attempted nothing, so a SECOND conflict in a row
+      // had nothing to replay and dropped the edit as "its card is gone".
+      pending = surviving.concat(pending)
+      return push(replaysLeft - 1)
+    }
+
+    if (!response.ok) {
+      return fail(attempted, `save failed — the daemon answered ${response.status}, your edit was NOT saved`)
+    }
+    // A 200 is a save, whether or not its body can be read: the server holds
+    // the write, and calling it lost would invite the owner to apply it twice.
+    confirmed = sentCards
+    const body = await response.json().catch(() => null)
+    if (typeof body?.rev === 'number') doc.rev = body.rev
+    onStatus('live', `synced · rev ${doc.rev}`)
+    settle(attempted, 'saved')
   }
 
   /**
@@ -183,12 +223,11 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
       onStatus('offline', 'your last edit could not be saved — its card is gone')
       return Promise.resolve('lost')
     }
-    pending.push(fn)
+    const answer = new Promise((resolve) => pending.push({ fn, resolve }))
     onDoc(doc)
-    clearTimeout(pushTimer)
     onStatus('saving', 'saving…')
-    pushTimer = setTimeout(() => push(), PUSH_DEBOUNCE_MS)
-    return new Promise((resolve) => waiters.push(resolve))
+    schedule()
+    return answer
   }
 
   function listen() {
@@ -199,7 +238,7 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
       // A version frame is not a board frame: it must never be dropped by the
       // push guard below, and it never touches the doc.
       if (payload.type === 'ui') return void onUiVersion?.(payload.version)
-      if (pushTimer !== null) return // a local edit is about to push; don't race it
+      if (pushTimer !== null || inFlight) return // a local edit is pushing or about to; don't race it
       if (payload.type !== 'board' || !doc || payload.rev <= doc.rev) return
       adopt(payload.doc)
       onStatus('live', `updated elsewhere · rev ${doc.rev}`)
@@ -211,11 +250,15 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
 
   function pollSafety() {
     setInterval(async () => {
-      if (pushTimer !== null) return
+      const busy = () => pushTimer !== null || inFlight || pending.length > 0
+      if (busy()) return
       try {
         const response = await fetch(`/api/board${params()}`)
         if (!response.ok) return
         const server = await response.json()
+        // Asked again after the await: an edit made meanwhile lives only in
+        // this doc, and adopting now would discard it.
+        if (busy()) return
         if (!doc || server.rev > doc.rev) {
           adopt(server)
           onStatus('live', `synced · rev ${doc.rev}`)
