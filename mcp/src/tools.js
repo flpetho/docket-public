@@ -27,12 +27,17 @@ import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
 export const AUTHOR = 'claude'
 
 /**
- * Where a Loop card goes when it is finished. The bridge reaches these from
- * Loop only through `verdict`; `update` refuses. The owner's drag in the UI
- * never comes through here and is never refused.
+ * From Loop, the bridge may move a card only BACK — to a column before Loop in
+ * the board's own order: escalated to Waiting, or returned to the queue. Any
+ * column after Loop is past the gate and is reached only through `verdict`.
+ * Positional rather than by name, so a board that calls its last columns
+ * something else is guarded just the same. The owner's drag in the UI never
+ * comes through here and is never refused.
  */
-const DONE_COLUMNS = ['review', 'done']
-const REVIEW_COLUMN = 'review'
+const pastTheGate = (keys, column) => keys.indexOf(column) > keys.indexOf(LOOP_COLUMN)
+/** Where meets lands: In review where the board has one, else the next column on. */
+const reviewColumn = (keys) =>
+  keys.includes('review') ? 'review' : keys[keys.indexOf(LOOP_COLUMN) + 1]
 
 const boardFileFor = (root) => join(root, '.docket', 'board.json')
 const configFileFor = (root) => join(root, '.docket', 'config.json')
@@ -247,7 +252,7 @@ export function createTools({ registryFile, cwd }) {
             throw new Error(`unknown column "${column}". Columns: ${keys.join(', ')}`)
           }
           const before = card.column
-          if (before === LOOP_COLUMN && DONE_COLUMNS.includes(column)) {
+          if (before === LOOP_COLUMN && column !== undefined && pastTheGate(keys, column)) {
             throw new Error(
               `a Loop card reaches ${column} only through docket_verdict — the gate rules, the builder does not. ` +
                 'To escalate instead, move it to waiting.',
@@ -292,15 +297,16 @@ export function createTools({ registryFile, cwd }) {
           if (card.column !== LOOP_COLUMN) {
             throw new Error(`a verdict is only for a card in Loop; "${id}" is in ${card.column}`)
           }
-          if (result === 'meets' && !keys.includes(REVIEW_COLUMN)) {
-            throw new Error(`this board has no "${REVIEW_COLUMN}" column for a card that meets`)
+          const landing = reviewColumn(keys)
+          if (result === 'meets' && !landing) {
+            throw new Error('this board has no column after Loop for a card that meets')
           }
           const now = stamp()
           if (!Array.isArray(card.verdicts)) card.verdicts = []
           card.verdicts.push({ result, at: now, evidence: String(evidence) })
           card.notes.push({ author: AUTHOR, at: now, text: `VERDICT: ${result}\n\n${String(evidence)}` })
           if (result === 'meets') {
-            card.column = REVIEW_COLUMN
+            card.column = landing
             card.columnSince = now
           }
           card.updatedAt = now

@@ -525,3 +525,39 @@ test('a card presents its verdicts across the bridge, and none as an empty list'
   assert.deepEqual(withOne.verdicts, [{ result: 'fails', at: 'x', evidence: 'e' }])
   assert.deepEqual(presentCard(normalizeCard(loopCard()), '/r').verdicts, [])
 })
+
+/** A board whose columns after Loop are not called review and done. */
+async function renamedSandbox(cards) {
+  const s = await sandbox({ cards })
+  const config = defaultConfig('My Project')
+  config.columns = config.columns.map((c) => (c.key === 'review' ? { key: 'checking', name: 'Checking' } : c.key === 'done' ? { key: 'shipped', name: 'Shipped' } : c))
+  await writeFile(join(s.root, '.docket', 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
+  return s
+}
+
+test('the refusal is by position, so renamed columns after Loop are guarded too', async () => {
+  for (const column of ['checking', 'shipped']) {
+    const s = await renamedSandbox([loopCard()])
+    await assert.rejects(s.tools.update({ id: 'c1', column }), /docket_verdict/, column)
+    assert.equal((await s.board()).rev, 3)
+  }
+})
+
+test('update may return a Loop card to any column before it', async () => {
+  for (const column of ['inbox', 'waiting', 'next', 'progress']) {
+    const s = await sandbox({ cards: [loopCard()] })
+    assert.equal((await s.tools.update({ id: 'c1', column })).column, column)
+  }
+})
+
+test('meets lands in the column after Loop when the board has no review column', async () => {
+  const s = await renamedSandbox([loopCard()])
+  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'ran it' })
+  assert.equal(result.column, 'checking')
+})
+
+test('an update that changes only the title of a Loop card is not a move and is allowed', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const result = await s.tools.update({ id: 'c1', title: 'renamed' })
+  assert.equal(result.column, 'loop')
+})
