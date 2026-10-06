@@ -66,6 +66,18 @@ export function unsavedParts({ draft, draftDetailAtOpen, noteText, editing, time
  * openId after the await left a hidden panel with a card "open", which turned
  * off the board's shortcuts and deferred every self-reload for the tab's life.
  */
+/**
+ * The create mutation. A draft re-committed after a 'lost' save may already be
+ * on the server — the PUT landed and only its answer was dropped — and then
+ * the 409 replay runs this onto cards that hold it. Replacing by id is what
+ * stops that becoming two cards with one id.
+ */
+export function placeNewCard(cards, card) {
+  const index = cards.findIndex((c) => c.id === card.id)
+  if (index !== -1) cards.splice(index, 1)
+  cards.unshift(card)
+}
+
 export function commitLanding({ openId, cardId, lost }) {
   if (!lost) return 'done'
   if (openId === cardId) return 'restore'

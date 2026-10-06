@@ -207,7 +207,16 @@ test('Escape closes the panel on both pages, from the modal, exactly once', () =
   assert.doesNotMatch(app, /Escape/)
 })
 
-import { commitLanding } from '../ui/modal.js'
+import { commitLanding, placeNewCard } from '../ui/modal.js'
+
+test('re-adding a card the server already has replaces it rather than duplicating it', () => {
+  const cards = [{ id: 'b' }, { id: 'new', title: 'old copy' }]
+  placeNewCard(cards, { id: 'new', title: 'as typed' })
+  assert.deepEqual(cards, [{ id: 'new', title: 'as typed' }, { id: 'b' }])
+  const fresh = [{ id: 'b' }]
+  placeNewCard(fresh, { id: 'c' })
+  assert.deepEqual(fresh.map((c) => c.id), ['c', 'b'], 'a genuinely new card goes first, as before')
+})
 
 test('an Add time entry in the open panel counts as unsaved', () => {
   // Card 9dq0: Close and Escape threw away a half-filled entry without asking.

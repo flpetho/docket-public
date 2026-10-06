@@ -223,3 +223,95 @@ test('replayOnto still keeps the changes of mutations that succeeded', () => {
   assert.deepEqual(server.find((c) => c.id === 'a').notes.map((n) => n.text), ['kept'])
   assert.deepEqual(server.find((c) => c.id === 'b').notes, [])
 })
+
+test('a push that fails leaves the board as the server last confirmed it', async () => {
+  // Card fzuf's review, 2026-10-06: the catch branch settled 'lost' but left
+  // the edit applied to the local cards. A created card stayed on the board
+  // after "nothing was saved", and the next successful push carried it to the
+  // server anyway — an edit reported lost arriving inside an unrelated save.
+  let failNext = true
+  const sent = []
+  await loaded(
+    (url, init) => {
+      if (init?.method === 'PUT') {
+        if (failNext) {
+          failNext = false
+          throw new TypeError('network down')
+        }
+        sent.push(JSON.parse(init.body))
+        return fakeResponse({ rev: 2 })
+      }
+      return fakeResponse(structuredClone(BOARD))
+    },
+    async (sync) => {
+      const before = structuredClone(sync.doc.cards)
+      const outcome = await sync.mutate((cards) => {
+        cards.unshift({ id: 'card-new', title: 'never saved', notes: [] })
+      })
+      assert.equal(outcome, 'lost')
+      assert.deepEqual(sync.doc.cards, before, 'the local board no longer shows the lost card')
+      await sync.mutate((cards) => {
+        cards[0].notes.push({ author: 'owner', at: 'y', text: 'real' })
+      })
+      assert.equal(sent.length, 1)
+      assert.ok(!sent[0].cards.some((c) => c.id === 'card-new'), 'the lost card did not ride along')
+    },
+  )
+})
+
+test('replays that run out leave the board as the server sent it', async () => {
+  // The other 'lost': the server kept changing. Its cards were adopted and the
+  // edit replayed onto them; giving up must take the replayed edit back out.
+  const sent = []
+  let rev = 1
+  await loaded(
+    (url, init) => {
+      if (init?.method === 'PUT') {
+        const body = JSON.parse(init.body)
+        if (body.cards.some((c) => c.id === 'card-new')) {
+          rev += 1
+          return fakeResponse({ rev, cards: structuredClone(BOARD.cards) }, 409)
+        }
+        sent.push(body)
+        return fakeResponse({ rev: rev + 1 })
+      }
+      return fakeResponse(structuredClone(BOARD))
+    },
+    async (sync, calls) => {
+      const outcome = await sync.mutate((cards) => {
+        cards.unshift({ id: 'card-new', title: 'kept bouncing', notes: [] })
+      })
+      assert.equal(outcome, 'lost')
+      assert.equal(calls.filter((c) => c.method === 'PUT').length, 4, 'the first push and all three replays were tried')
+      assert.ok(!sync.doc.cards.some((c) => c.id === 'card-new'))
+    },
+  )
+})
+
+test('an edit survives two conflicts in a row', async () => {
+  // Found while writing the test above: the replayed edit was not re-queued,
+  // so a second 409 had nothing to replay and the note was dropped with the
+  // wrong reason. One other writer saving twice was enough.
+  let conflicts = 2
+  let rev = 1
+  const sent = []
+  await loaded(
+    (url, init) => {
+      if (init?.method === 'PUT') {
+        if (conflicts > 0) {
+          conflicts -= 1
+          rev += 1
+          return fakeResponse({ rev, cards: structuredClone(BOARD.cards) }, 409)
+        }
+        sent.push(JSON.parse(init.body))
+        return fakeResponse({ rev: rev + 1 })
+      }
+      return fakeResponse(structuredClone(BOARD))
+    },
+    async (sync) => {
+      const outcome = await sync.mutate(noteAdder('a', 'kept'))
+      assert.equal(outcome, 'saved')
+      assert.deepEqual(sent.at(-1).cards[0].notes.map((n) => n.text), ['kept'])
+    },
+  )
+})

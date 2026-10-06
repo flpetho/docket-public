@@ -57,6 +57,10 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
   // onto the server's newer cards; replaying a stale array would clobber them.
   let pending = []
   let waiters = []
+  // The cards as the server last confirmed them: what it sent us, or what it
+  // accepted from us. A push that fails returns the board to this, so an edit
+  // reported lost is not left on screen to ride along with the next save.
+  let confirmed = []
 
   const settle = (outcome) => {
     const resolvers = waiters
@@ -68,6 +72,19 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
 
   const adopt = (next) => {
     doc = next
+    confirmed = structuredClone(next.cards ?? [])
+    onDoc(doc)
+  }
+
+  /**
+   * Undo what did not land. The board goes back to what the server confirmed,
+   * then the edits still queued — made while the failed push was in flight —
+   * are applied again, because they have not been tried yet and will push on
+   * their own timer. Card fzuf's review, 2026-10-06.
+   */
+  const rollBack = () => {
+    restoreInto(doc.cards, structuredClone(confirmed))
+    replayOnto(doc.cards, pending)
     onDoc(doc)
   }
 
@@ -88,6 +105,7 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
     pushTimer = null
     const attempted = pending
     pending = []
+    const sentCards = structuredClone(doc.cards)
     try {
       const response = await fetch(`/api/board${params()}`, {
         method: 'PUT',
@@ -115,22 +133,29 @@ export function createSync({ project, onDoc, onStatus, onUiVersion }) {
           return
         }
         if (replaysLeft <= 0) {
+          rollBack()
           onStatus('offline', 'could not save — the board kept changing underneath')
           settle('lost')
           return
         }
         if (lost.length) onStatus('saving', `${lost.length} edit(s) could not be replayed`)
         else onStatus('saving', `changed elsewhere — replaying your edit onto rev ${doc.rev}`)
+        // Queue the replayed edits again, ahead of anything newer. Without
+        // this the next push attempted nothing, so a SECOND conflict in a row
+        // had nothing to replay and dropped the edit as "its card is gone".
+        pending = toReplay.filter((fn) => !lost.includes(fn)).concat(pending)
         return push(replaysLeft - 1)
       }
 
       if (!response.ok) throw new Error(`PUT ${response.status}`)
       doc.rev = (await response.json()).rev
+      confirmed = sentCards
       onStatus('live', `synced · rev ${doc.rev}`)
       settle('saved')
     } catch {
       // Offline stays read-only: no queue, no retry. But say plainly that the
       // edit did not land, rather than implying it did.
+      rollBack()
       onStatus('offline', 'save failed — daemon unreachable, your edit was NOT saved')
       settle('lost')
     }
