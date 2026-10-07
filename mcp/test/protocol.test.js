@@ -83,7 +83,7 @@ const card = (over = {}) => ({
   ...over,
 })
 
-test('the handshake succeeds and all seven tools are advertised', async () => {
+test('the handshake succeeds and all eight tools are advertised', async () => {
   const h = await connect()
   try {
     const { tools } = await h.client.listTools()
@@ -97,6 +97,7 @@ test('the handshake succeeds and all seven tools are advertised', async () => {
         'docket_projects',
         'docket_todo',
         'docket_update',
+        'docket_verdict',
       ],
     )
     for (const tool of tools) {

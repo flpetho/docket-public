@@ -12,7 +12,7 @@ import { formatDuration, totalMs } from '../../board/ui/time.js'
 import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
 
 /**
- * The seven board tools, as pure functions over the store.
+ * The eight board tools, as pure functions over the store.
  *
  * Deliberately free of the MCP SDK and of zod: `server.js` is the only file that
  * knows about the protocol, so this logic is testable with zero dependencies and
@@ -25,6 +25,19 @@ import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
  */
 
 export const AUTHOR = 'claude'
+
+/**
+ * From Loop, the bridge may move a card only BACK — to a column before Loop in
+ * the board's own order: escalated to Waiting, or returned to the queue. Any
+ * column after Loop is past the gate and is reached only through `verdict`.
+ * Positional rather than by name, so a board that calls its last columns
+ * something else is guarded just the same. The owner's drag in the UI never
+ * comes through here and is never refused.
+ */
+const pastTheGate = (keys, column) => keys.indexOf(column) > keys.indexOf(LOOP_COLUMN)
+/** Where meets lands: In review where the board has one, else the next column on. */
+const reviewColumn = (keys) =>
+  keys.includes('review') ? 'review' : keys[keys.indexOf(LOOP_COLUMN) + 1]
 
 const boardFileFor = (root) => join(root, '.docket', 'board.json')
 const configFileFor = (root) => join(root, '.docket', 'config.json')
@@ -126,6 +139,9 @@ export function presentCard(card, root) {
     ...(card.column === LOOP_COLUMN ? { brief: briefFor(card.detail) } : {}),
     // Subtasks, READ-WRITE through this bridge, unlike time. The board is
     // shared state: the owner writes the list, and Claude works it.
+    // The gate's rulings, oldest first. Every card reports the list, so an
+    // empty one means "never ruled on" rather than "not asked".
+    verdicts: (card.verdicts ?? []).map((v) => ({ result: v.result, at: v.at, evidence: v.evidence })),
     todos: (card.todos ?? []).map((t) => ({
       id: t.id,
       text: t.text,
@@ -236,6 +252,12 @@ export function createTools({ registryFile, cwd }) {
             throw new Error(`unknown column "${column}". Columns: ${keys.join(', ')}`)
           }
           const before = card.column
+          if (before === LOOP_COLUMN && column !== undefined && pastTheGate(keys, column)) {
+            throw new Error(
+              `a Loop card reaches ${column} only through docket_verdict — the gate rules, the builder does not. ` +
+                'To escalate instead, move it to waiting.',
+            )
+          }
           if (title !== undefined) card.title = String(title)
           if (detail !== undefined) card.detail = String(detail)
           if (tags !== undefined) card.tags = tags.map(String)
@@ -244,6 +266,51 @@ export function createTools({ registryFile, cwd }) {
           card.updatedAt = stamp()
           if (card.column !== before) card.columnSince = stamp()
           return { id, column: card.column, movedFrom: card.column === before ? null : before }
+        },
+      })
+      return { project: slug, ...outcome }
+    },
+
+    /**
+     * The gate's ruling on a Loop card, and the only bridge path from Loop to
+     * In review. meets moves it there; fails leaves it in Loop. Both are
+     * recorded as a structured verdict AND as a note, because the thread is
+     * the morning report and the field is what a rule can check.
+     *
+     * The board cannot tell the verifier from the builder — both reach it
+     * through this bridge as "claude". What this buys is that a forged
+     * verdict is a separate, deliberate, visible call, never a slip.
+     */
+    async verdict({ project, id, result, evidence } = {}) {
+      if (!id) throw new Error('id is required')
+      if (!['meets', 'fails'].includes(result)) throw new Error('result must be meets or fails')
+      if (!evidence || !String(evidence).trim()) {
+        throw new Error('evidence is required: what you ran, and what each acceptance clause showed')
+      }
+      const { root, slug } = await where(project)
+
+      const outcome = await mutate({
+        root,
+        apply: (cards, keys) => {
+          const card = cards.find((c) => c.id === id)
+          if (!card) throw new Error(`no card "${id}" on this board`)
+          if (card.column !== LOOP_COLUMN) {
+            throw new Error(`a verdict is only for a card in Loop; "${id}" is in ${card.column}`)
+          }
+          const landing = reviewColumn(keys)
+          if (result === 'meets' && !landing) {
+            throw new Error('this board has no column after Loop for a card that meets')
+          }
+          const now = stamp()
+          if (!Array.isArray(card.verdicts)) card.verdicts = []
+          card.verdicts.push({ result, at: now, evidence: String(evidence) })
+          card.notes.push({ author: AUTHOR, at: now, text: `VERDICT: ${result}\n\n${String(evidence)}` })
+          if (result === 'meets') {
+            card.column = landing
+            card.columnSince = now
+          }
+          card.updatedAt = now
+          return { id, result, column: card.column }
         },
       })
       return { project: slug, ...outcome }

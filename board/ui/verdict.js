@@ -6,6 +6,12 @@
  * source, and the board has already been bitten once by two copies of the same
  * truth (see the decision log on localStorage).
  *
+ * Since 2026-10-06 `docket_verdict` also records each ruling on the card's
+ * `verdicts` field, and is the only bridge call that moves a Loop card past
+ * the gate. It writes this note in the same call, so the two agree unless a
+ * hand writes a VERDICT note without the tool; the face keeps reading the
+ * thread it shows.
+ *
  * The shape it matches is the one `.claude/agents/docket-verifier.md` specifies:
  * a note whose FIRST line is `VERDICT: meets` or `VERDICT: fails`. Anchored to
  * the start of the note rather than to any line, so a note discussing a verdict

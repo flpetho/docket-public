@@ -5,7 +5,7 @@ appended to the one already there. It is written to be pasted, and it is address
 coding agent rather than to you.
 
 Everything below is the working agreement. It is not a description of the tool; the tool is
-seven MCP tools that are already available. This is what they mean.
+eight MCP tools that are already available. This is what they mean.
 
 ---
 
@@ -13,7 +13,8 @@ seven MCP tools that are already available. This is what they mean.
 
 This project has a board at `.docket/board.json`. The owner opens it in a browser and drags
 cards. You read and write the same file through `docket_board`, `docket_add`,
-`docket_update`, `docket_note`, `docket_delete` and `docket_projects`.
+`docket_update`, `docket_note`, `docket_todo`, `docket_delete` and `docket_projects` — and the gate
+rules through `docket_verdict`.
 
 It is one document that two parties annotate. It is **not** a place to file status updates
 for a human to read later, and not a second backlog that drifts from the real one.
@@ -96,10 +97,16 @@ tight on the outcome and loose on the route.
 
 When a card's work is done, spawn the **`docket-verifier`** subagent and let it rule. It has
 fresh context, no edit tools, re-runs the `Verify with` command itself, checks each
-`Acceptance` clause independently, and writes a `VERDICT: meets | fails` note to the card.
+`Acceptance` clause independently, and rules with `docket_verdict`, which records the verdict
+on the card and writes it to the thread as a `VERDICT: meets | fails` note.
 
-- **meets** → it moves the card to *In review*.
+- **meets** → the card moves to *In review*.
 - **fails** → the card stays in Loop with what would change the verdict.
+
+`docket_verdict` is the **only** way through the bridge from Loop to *In review* or *Done*:
+`docket_update` refuses that move. The board cannot tell the verifier from the builder, so
+this does not make a forged verdict impossible — it makes it a separate, deliberate call that
+sits on the card for the owner to see. Never make it for your own work.
 
 This is not ceremony. An agent that both builds and judges will report its own work as done,
 confidently, and be wrong. In an unattended run there is nobody to notice. Separate context,
