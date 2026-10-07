@@ -498,7 +498,11 @@ h1 {
   display: block;
   margin: 1.1rem 0 0.35rem;
 }
-#panel label.micro:first-of-type {
+/* Only the Title label, the first thing in the panel. This was
+   `#panel label.micro:first-of-type`, which also matched the first label in
+   EVERY container — Tags, Estimate and the time form's Date — and zeroed their
+   top margin, so Tags sat tight under Column and Date rode above Start. */
+#panel > label.micro:first-of-type {
   margin-top: 0;
 }
 
@@ -527,9 +531,13 @@ h1 {
   outline: none;
   border-bottom-color: var(--accent);
 }
+/* Wraps rather than overflows: Estimate and Due are 9rem each, which is more
+   than a 390px phone's panel holds side by side — Due ran 42px past the edge.
+   A wrapped field keeps its own label's top margin, so the spacing holds. */
 #panel .panel-row {
   display: flex;
-  gap: 1.4rem;
+  flex-wrap: wrap;
+  column-gap: 1.4rem;
   align-items: flex-end;
   margin-top: 0.2rem;
 }
@@ -893,7 +901,11 @@ h1 {
 }
 .time-actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 0.5rem;
+}
+.time-actions button {
+  white-space: nowrap;
 }
 #f-time-total.over {
   color: var(--warn);
@@ -939,6 +951,27 @@ h1 {
   flex: 1 1 auto;
   white-space: nowrap;
 }
+/* The duration is the last thing on the row, so every session's figure ends
+   on one right edge. The remove button used to sit after it, invisible but
+   still taking its width, which pulled every duration in from the edge. */
+/* The figures and the button never wrap: on a phone, where remove is always
+   visible, the row squeezed them to one letter per line. The day-and-clock
+   is what gives way. */
+.session-top .session-when {
+  min-width: 0;
+  white-space: normal;
+}
+.session-top .session-remove,
+.session-top .session-duration {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.session-top .session-remove {
+  order: 1;
+}
+.session-top .session-duration {
+  order: 2;
+}
 .session-duration {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -975,6 +1008,18 @@ h1 {
   font-size: 0.82rem;
   padding: 0.15rem 0;
 }
+/* Editable, but its underline only shows when you reach for it: at rest it
+   doubled the session's own rule, two hairlines between every entry. The id
+   is needed to outrank `#panel textarea`, which draws every panel field's line. */
+#panel .session-note {
+  border-bottom-color: transparent;
+}
+#panel .session-note:hover {
+  border-bottom-color: var(--hair);
+}
+#panel .session-note:focus {
+  border-bottom-color: var(--accent);
+}
 .session-note:focus {
   outline: none;
   border-bottom-color: var(--accent);
@@ -997,15 +1042,77 @@ h1 {
 .time-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.5rem 0.8rem;
+  align-items: end;
+  gap: 0.8rem 1rem;
   margin: 0.4rem 0 0.6rem;
-  padding: 0.6rem 0.7rem;
+  padding: 0.8rem 0.9rem;
   border: 1px solid var(--hair);
 }
-.time-form label {
+/* `#panel label.micro` makes every panel label a block with a 1.1rem top
+   margin. Inside this grid that broke the row: block labels let each input
+   keep its intrinsic width (Minutes ran out of the box) and the margins
+   disagreed (Date rode higher). The grid owns the spacing here. */
+.time-form label,
+#panel .time-form label.micro {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+}
+/* One face across the row: `#panel input[type='text']` gives Start and Stop
+   Geist, and Date and Minutes would otherwise inherit something else. */
+#panel .time-form input {
+  font-family: 'Geist', ui-sans-serif, sans-serif;
+  font-size: 0.85rem;
+  padding: 0.3rem 0;
+}
+.time-form input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 1.9rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Minutes is typed or set by a chip; spinner arrows are a third, worse way. */
+.time-form input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.time-form input[type='number']::-webkit-inner-spin-button,
+.time-form input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* The id outranks `#panel input[type='text']`, which draws every panel field's line. */
+.time-form input[aria-invalid],
+#panel .time-form input[aria-invalid] {
+  border-bottom-color: var(--warn);
+}
+/* One tap for "I just did half an hour": the span that ends at Stop. */
+.time-quick {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+/* Named with the id too: `#panel button.micro` would otherwise pad and hover
+   the panel's chips differently from the dashboard's. */
+.time-quick button,
+#panel .time-quick button.micro {
+  background: none;
+  border: 1px solid var(--hair);
+  color: var(--muted);
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.time-quick button:hover,
+.time-quick button:focus-visible,
+#panel .time-quick button.micro:hover,
+#panel .time-quick button.micro:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--fg);
 }
 .time-form input,
 .field-input {

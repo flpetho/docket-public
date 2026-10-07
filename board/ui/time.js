@@ -195,6 +195,41 @@ export function localIso(date, clock) {
   return same ? when.toISOString() : null
 }
 
+/**
+ * A clock typed freehand — "930", "9:30", "2pm", "14:05" — as the "HH:MM"
+ * localIso reads, or null. The form used to be a native time input, whose
+ * scrolling picker the owner found clunky (2026-10-01); a text field has to
+ * accept what people type, and refuse rather than guess at "9:5" or "960",
+ * because a wrong guess is a session at the wrong hour that nothing catches.
+ */
+export function parseClock(text) {
+  const raw = String(text ?? '').trim().toLowerCase()
+  const match = /^(\d{1,2})(?:[:.h](\d{2})|h)?\s*(?:([ap])\.?(?:m\.?)?)?$/.exec(raw) ?? /^(\d{1,2})(\d{2})\s*(?:([ap])\.?(?:m\.?)?)?$/.exec(raw)
+  if (!match) return null
+  let hours = Number(match[1])
+  const minutes = Number(match[2] ?? 0)
+  const meridiem = match[3]
+  if (minutes > 59) return null
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null
+    hours = (hours % 12) + (meridiem === 'p' ? 12 : 0)
+  } else if (hours > 23) return null
+  const two = (n) => String(n).padStart(2, '0')
+  return `${two(hours)}:${two(minutes)}`
+}
+
+/**
+ * A duration chip: the Start for a span of `minutes` ending at the typed Stop,
+ * on the form's one date. A span reaching back past midnight would need two
+ * dates, which the form does not have, so it is refused rather than wrapped.
+ */
+export function startBefore(date, stopText, minutes) {
+  const stop = localIso(date, parseClock(stopText))
+  if (!stop || !(minutes > 0)) return { error: 'set a stop time first' }
+  const parts = localParts(new Date(Date.parse(stop) - minutes * 60e3).toISOString())
+  return parts.date === date ? { clock: parts.clock } : { error: 'that would start on the day before' }
+}
+
 export function localParts(iso) {
   const when = new Date(iso)
   const two = (n) => String(n).padStart(2, '0')

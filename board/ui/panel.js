@@ -69,9 +69,16 @@ export const PANEL_HTML = `
     </div>
     <form id="f-time-form" class="time-form" hidden>
       <label class="micro">Date <input id="f-add-date" type="date" required /></label>
-      <label class="micro">Start <input id="f-add-start" type="time" required /></label>
-      <label class="micro">Stop <input id="f-add-stop" type="time" required /></label>
+      <label class="micro">Start <input id="f-add-start" class="clock" type="text" autocomplete="off" spellcheck="false" placeholder="9:30" required /></label>
+      <label class="micro">Stop <input id="f-add-stop" class="clock" type="text" autocomplete="off" spellcheck="false" placeholder="10:15" required /></label>
       <label class="micro">Minutes <input id="f-add-minutes" type="number" min="1" step="1" inputmode="numeric" /></label>
+      <span id="f-add-quick" class="time-quick" role="group" aria-label="Duration ending at stop">
+        <button type="button" class="micro" data-minutes="15">15m</button>
+        <button type="button" class="micro" data-minutes="30">30m</button>
+        <button type="button" class="micro" data-minutes="45">45m</button>
+        <button type="button" class="micro" data-minutes="60">1h</button>
+        <button type="button" class="micro" data-minutes="120">2h</button>
+      </span>
       <label class="micro time-form-note">What was done <input id="f-add-note" type="text" placeholder="optional" /></label>
       <span class="time-form-foot">
         <button id="f-add-save" class="micro" type="submit">Save</button>
@@ -159,6 +166,7 @@ export function panelElements(doc = document) {
     addStart: byId('f-add-start'),
     addStop: byId('f-add-stop'),
     addMinutes: byId('f-add-minutes'),
+    addQuick: byId('f-add-quick'),
     addNote: byId('f-add-note'),
     addSave: byId('f-add-save'),
     addCancel: byId('f-add-cancel'),

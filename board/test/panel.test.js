@@ -145,3 +145,21 @@ test('a hidden time form is actually hidden', () => {
   const css = readFileSync(fileURLToPath(new URL('../ui/style.css', import.meta.url)), 'utf8')
   assert.match(css, /\.time-form\[hidden\]\s*\{\s*display:\s*none/)
 })
+
+test('the Add time clocks are typed fields, on both pages', () => {
+  // The native time input's scrolling picker was the clunkiest part of logging
+  // time (the owner, 2026-10-01). parseClock reads what is typed instead.
+  for (const markup of [PANEL_HTML, read('dashboard.html')]) {
+    assert.doesNotMatch(markup, /type="time"/)
+    assert.match(markup, /class="time-quick"/, 'the duration chips are present')
+  }
+})
+
+test('the label margin reset reaches only the Title label', () => {
+  // `#panel label.micro:first-of-type` matched the first label in every
+  // container and zeroed its margin: Tags sat tight under Column, and the time
+  // form's Date rode above Start. Found 2026-10-01 from the owner's report.
+  const css = read('style.css')
+  assert.doesNotMatch(css, /^#panel label\.micro:first-of-type/m)
+  assert.match(css, /#panel > label\.micro:first-of-type/)
+})

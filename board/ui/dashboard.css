@@ -214,9 +214,14 @@ body.dashboard {
   font-size: var(--row-type);
   line-height: 1.5;
 }
+/* The one exception to one size, and it is optical, not a hierarchy: mono at
+   the same pixel size with tracking reads a size larger than the text face
+   beside it — the owner saw When as bigger than Card and What was done,
+   2026-10-01. A step down with less tracking matches them by eye. */
 .sessions-table td.s-when {
   font-family: var(--mono);
-  letter-spacing: 0.06em;
+  font-size: calc(var(--row-type) * 0.88);
+  letter-spacing: 0.02em;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -229,7 +234,12 @@ body.dashboard {
    owner has looked past an actionable control in that colour three times now
    (see the decision log, 2026-09-18). Foreground at rest, underlined on hover
    and on focus; the accent stays spoken for by the time column. */
+/* Block, not the button's default inline-block: an inline-block's baseline
+   is its LAST line, so a title that wrapped pulled When, What was done and
+   Time down to its second line and the row's columns started at different
+   heights. As a block, the cell's baseline is the title's first line. */
 .sessions-table td.s-card .s-open {
+  display: block;
   background: none;
   border: 0;
   padding: 0;
@@ -259,7 +269,8 @@ body.dashboard {
    the table read as a quantity rather than as words. */
 .sessions-table td.s-time {
   font-family: var(--mono);
-  letter-spacing: 0.04em;
+  font-size: calc(var(--row-type) * 0.88);
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
 }
@@ -339,7 +350,13 @@ footer.dim {
     border-bottom: 1px solid var(--hair);
     padding: 0.55rem 0;
   }
-  .sessions-table td {
+  /* The column classes are named, not just `td`: `td.s-card { width: 26% }`
+     outranks a bare `td`, so the card title kept a quarter of the row and
+     wrapped one word per line under a full-width day. */
+  .sessions-table td,
+  .sessions-table td.s-when,
+  .sessions-table td.s-card,
+  .sessions-table td.s-time {
     display: block;
     padding: 0;
     border: 0;
@@ -363,6 +380,11 @@ footer.dim {
   .sessions-table tfoot tr {
     border-bottom: 0;
     border-top: 1px solid var(--hair-lit);
+  }
+  /* The row draws the rule here; the cells' desktop rule would draw it again,
+     broken by the column gap. */
+  .sessions-table tfoot td {
+    border-top: 0;
   }
   .sessions-table tfoot .foot-label {
     grid-column: 1;

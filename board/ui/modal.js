@@ -16,6 +16,8 @@ import {
   formatSessionParts,
   localIso,
   localParts,
+  parseClock,
+  startBefore,
   spanFromDuration,
   totalMs,
   validSpan,
@@ -583,8 +585,8 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   // is shared with addSession so the panel cannot accept what the model refuses.
   const timeForm = elements.timeForm
   const formInstants = () => ({
-    start: localIso(elements.addDate?.value, elements.addStart?.value),
-    stop: localIso(elements.addDate?.value, elements.addStop?.value),
+    start: localIso(elements.addDate?.value, parseClock(elements.addStart?.value)),
+    stop: localIso(elements.addDate?.value, parseClock(elements.addStop?.value)),
   })
   const syncMinutesFromClocks = () => {
     const { start, stop } = formInstants()
@@ -600,6 +602,8 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     // An hour ago across midnight would put start after stop on one date; start the day instead.
     elements.addStart.value = startParts.date === stopParts.date ? startParts.clock : '00:00'
     elements.addStop.value = stopParts.clock
+    elements.addStart.removeAttribute('aria-invalid')
+    elements.addStop.removeAttribute('aria-invalid')
     elements.addNote.value = ''
     elements.addError.textContent = ''
     syncMinutesFromClocks()
@@ -616,6 +620,29 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
   })
   elements.addCancel?.addEventListener('click', closeTimeForm)
   for (const el of [elements.addDate, elements.addStart, elements.addStop]) el?.addEventListener('input', syncMinutesFromClocks)
+  // A typed clock is tidied to HH:MM once the person leaves it, so what they
+  // see is what will be saved; one it cannot read is marked, never rewritten.
+  for (const el of [elements.addStart, elements.addStop]) {
+    el?.addEventListener('blur', () => {
+      const clock = parseClock(el.value)
+      if (clock) el.value = clock
+      el.toggleAttribute('aria-invalid', Boolean(el.value.trim()) && !clock)
+    })
+    // Typing again is an attempt at a fix; the mark waits for the next blur.
+    el?.addEventListener('input', () => el.removeAttribute('aria-invalid'))
+  }
+  // "I just did half an hour": a chip is the span that ends at Stop, so it
+  // moves Start back rather than pushing Stop into the future.
+  elements.addQuick?.addEventListener('click', (event) => {
+    const minutes = Number(event.target.closest('button[data-minutes]')?.dataset.minutes)
+    if (!minutes) return
+    const { clock, error } = startBefore(elements.addDate.value, elements.addStop.value, minutes)
+    elements.addError.textContent = error ?? ''
+    if (error) return
+    elements.addStart.value = clock
+    elements.addStart.removeAttribute('aria-invalid')
+    syncMinutesFromClocks()
+  })
   elements.addMinutes?.addEventListener('input', () => {
     const { start } = formInstants()
     const stop = spanFromDuration(start, Number(elements.addMinutes.value))
@@ -627,6 +654,7 @@ export function createModal({ elements, config, project, onChange, onAddNote, on
     }
     elements.addError.textContent = ''
     elements.addStop.value = parts.clock
+    elements.addStop.removeAttribute('aria-invalid')
   })
   timeForm?.addEventListener('submit', async (event) => {
     event.preventDefault()

@@ -209,3 +209,55 @@ test('formatBudget follows the same minute: full but not over, then over', () =>
   assert.deepEqual(formatBudget(at(2312), Date.parse(T2)), { text: '2h 0m of 2h · <1m left', over: false })
   assert.deepEqual(formatBudget(at(60000), Date.parse(T2)), { text: '2h 1m of 2h · 1m over', over: true })
 })
+
+import { parseClock } from '../ui/time.js'
+
+test('parseClock reads a clock the way a person types one', () => {
+  // The native time input was a scrolling picker — the owner's word was
+  // "clunky", 2026-10-01. A typed field has to accept what people actually
+  // type, and answer in the one form localIso reads.
+  const cases = {
+    '14:05': '14:05',
+    '9:30': '09:30',
+    '9.30': '09:30',
+    '9h30': '09:30',
+    '9h': '09:00',
+    '9': '09:00',
+    '0': '00:00',
+    '14': '14:00',
+    '930': '09:30',
+    '0930': '09:30',
+    '1405': '14:05',
+    '2pm': '14:00',
+    '2 PM': '14:00',
+    '2:15 pm': '14:15',
+    '9a': '09:00',
+    '9p': '21:00',
+    '9:30a.m.': '09:30',
+    '9:30p.m': '21:30',
+    '12am': '00:00',
+    '12:30am': '00:30',
+    '12pm': '12:00',
+    '  7:45  ': '07:45',
+  }
+  for (const [typed, expected] of Object.entries(cases)) assert.equal(parseClock(typed), expected, `"${typed}"`)
+})
+
+test('parseClock refuses what it cannot read unambiguously, rather than guessing', () => {
+  // A wrong guess is a session logged at the wrong hour, which nothing catches later.
+  for (const typed of ['', '   ', 'abc', '24', '24:00', '25:00', '9:60', '960', '9:5', '9:9', '9:pm', '12345', '-1', '0pm', '13pm', '00am', '9:30:15', '9 30 pm x', null, undefined]) {
+    assert.equal(parseClock(typed), null, `"${typed}"`)
+  }
+})
+
+import { startBefore } from '../ui/time.js'
+
+test('a duration chip is the span that ends at Stop, on the same day', () => {
+  // "I just did half an hour": Start moves back, Stop stays where it is.
+  assert.deepEqual(startBefore('2026-10-01', '14:15', 45), { clock: '13:30' })
+  assert.deepEqual(startBefore('2026-10-01', '2:15pm', 120), { clock: '12:15' }, 'the stop is read as typed')
+  assert.deepEqual(startBefore('2026-10-01', '00:30', 60), { error: 'that would start on the day before' })
+  assert.deepEqual(startBefore('2026-10-01', '', 30), { error: 'set a stop time first' })
+  assert.deepEqual(startBefore('2026-10-01', '9:5', 30), { error: 'set a stop time first' })
+  assert.deepEqual(startBefore('2026-10-01', '10:00', 0), { error: 'set a stop time first' })
+})
