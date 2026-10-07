@@ -1,5 +1,6 @@
 import { createDropdown } from './dropdown.js'
 import { mountPanel } from './panel.js'
+import { placeNewCard } from './modal.js'
 import { addSession, deleteSession, setSessionNote, startTimer, stopTimer } from './time.js'
 import { addTodo, removeTodo, setDone } from './todos.js'
 import { createPager } from './phone.js'
@@ -245,10 +246,7 @@ async function boot() {
         card.notes.splice(index, 1)
         card.updatedAt = stamp()
       }),
-    onCreate: (card) =>
-      sync.mutate((cards) => {
-        cards.unshift(card)
-      }),
+    onCreate: (card) => sync.mutate((cards) => placeNewCard(cards, card)),
     onNotice: (message) => notice('offline', message),
     // The timer. One running per board — startTimer stops any other card and
     // logs its session in the same write, so an hour is never counted twice.
