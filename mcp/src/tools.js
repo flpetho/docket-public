@@ -10,7 +10,7 @@ import { formatDuration, totalMs } from '../../board/ui/time.js'
 // could call it. That is the refusal, enforced by absence rather than by a
 // check that could be edited away.
 import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
-import { clauseLines, clauseProblem } from '../../board/ui/verdict.js'
+import { STRIKES, clauseLines, clauseProblem, strikesFor, strikesNote } from '../../board/ui/verdict.js'
 
 /**
  * The eight board tools, as pure functions over the store.
@@ -137,7 +137,7 @@ export function presentCard(card, root) {
     // Loop cards report their brief, so the pre-flight pass is mechanical:
     // a card with nothing checkable under "Done when" gets escalated before any
     // work starts, rather than guessed at for four hours.
-    ...(card.column === LOOP_COLUMN ? { brief: briefFor(card.detail) } : {}),
+    ...(card.column === LOOP_COLUMN ? { brief: briefFor(card.detail), strikes: strikesFor(card) } : {}),
     // Subtasks, READ-WRITE through this bridge, unlike time. The board is
     // shared state: the owner writes the list, and Claude works it.
     // The gate's rulings, oldest first. Every card reports the list, so an
@@ -326,10 +326,21 @@ export function createTools({ registryFile, cwd }) {
             card.column = landing
             card.columnSince = now
           }
+          // Three strikes, counted by the board: the rule fires on its own, whether
+          // or not the session that failed the card remembers the first two.
+          const strikes = result === 'fails' ? strikesFor(card) : 0
+          if (strikes >= STRIKES) {
+            const moved = keys.includes('waiting')
+            card.notes.push({ author: AUTHOR, at: now, text: strikesNote(card, { moved }) })
+            if (moved) {
+              card.column = 'waiting'
+              card.columnSince = now
+            }
+          }
           card.updatedAt = now
           // The count is how a caller tells this bridge from one started before
           // clauses existed: an old server's schema drops the field silently.
-          return { id, result, column: card.column, clauses: ruled.length }
+          return { id, result, column: card.column, clauses: ruled.length, ...(result === 'fails' ? { strikes } : {}) }
         },
       })
       return { project: slug, ...outcome }

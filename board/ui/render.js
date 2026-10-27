@@ -1,5 +1,5 @@
 import { briefWarning } from './brief.js'
-import { latestVerdict, verdictDate } from './verdict.js'
+import { STRIKES, latestVerdict, strikesFor, verdictDate } from './verdict.js'
 import { tagColor } from './tag-color.js'
 import { formatDuration, totalMs } from './time.js'
 import { todoProgress } from './todos.js'
@@ -131,8 +131,11 @@ function cardElement(card, { config, lastSeen, onOpen, onDragStart, onDragEnd })
     chip.className = 'verdict'
     chip.dataset.verdict = ruling.verdict
     const stamp = verdictDate(ruling.at)
-    chip.textContent = stamp ? `${ruling.word} · ${stamp}` : ruling.word
-    chip.title = `the gate ruled ${ruling.verdict}`
+    // In Loop, a failed card shows how many of its three strikes are spent.
+    const strikes = strikesFor(card)
+    const word = strikes && ruling.verdict === 'fails' ? `${ruling.word} ${strikes}/${STRIKES}` : ruling.word
+    chip.textContent = stamp ? `${word} · ${stamp}` : word
+    chip.title = strikes ? `the gate ruled fails — strike ${strikes} of ${STRIKES}` : `the gate ruled ${ruling.verdict}`
     marks.append(chip)
   }
   // Unread means a note by somebody else, newer than this browser last looked.
