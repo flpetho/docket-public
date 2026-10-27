@@ -1,4 +1,5 @@
 import { tagColor } from '../ui/tag-color.js'
+import { clauseProblem } from '../ui/verdict.js'
 
 export const CARD_KEYS = [
   'id',
@@ -137,6 +138,12 @@ export function validateCard(card, columnKeys) {
     for (const verdict of card.verdicts) {
       if (!['meets', 'fails'].includes(verdict?.result) || typeof verdict?.at !== 'string' || typeof verdict?.evidence !== 'string') {
         errors.push('each verdict needs result meets|fails, a string at, and string evidence')
+        break
+      }
+      // Optional: verdicts recorded before 2026-10-27 have no clauses.
+      const problem = verdict.clauses === undefined ? null : clauseProblem(verdict.clauses)
+      if (problem) {
+        errors.push(`a verdict's clauses are malformed: ${problem}`)
         break
       }
     }

@@ -10,6 +10,7 @@ import { formatDuration, totalMs } from '../../board/ui/time.js'
 // could call it. That is the refusal, enforced by absence rather than by a
 // check that could be edited away.
 import { addTodo, newTodoId, setDone } from '../../board/ui/todos.js'
+import { clauseLines, clauseProblem } from '../../board/ui/verdict.js'
 
 /**
  * The eight board tools, as pure functions over the store.
@@ -141,7 +142,7 @@ export function presentCard(card, root) {
     // shared state: the owner writes the list, and Claude works it.
     // The gate's rulings, oldest first. Every card reports the list, so an
     // empty one means "never ruled on" rather than "not asked".
-    verdicts: (card.verdicts ?? []).map((v) => ({ result: v.result, at: v.at, evidence: v.evidence })),
+    verdicts: (card.verdicts ?? []).map((v) => ({ result: v.result, at: v.at, evidence: v.evidence, clauses: v.clauses ?? [] })),
     todos: (card.todos ?? []).map((t) => ({
       id: t.id,
       text: t.text,
@@ -280,12 +281,28 @@ export function createTools({ registryFile, cwd }) {
      * The board cannot tell the verifier from the builder — both reach it
      * through this bridge as "claude". What this buys is that a forged
      * verdict is a separate, deliberate, visible call, never a slip.
+     *
+     * Every acceptance clause is ruled on its own (2026-10-27): meets only when
+     * each one is met, because mismatch and not_evaluated are unknowns, and an
+     * unknown is never a pass. fails stays open with every clause met — work
+     * can satisfy the letter and miss the point.
      */
-    async verdict({ project, id, result, evidence } = {}) {
+    async verdict({ project, id, result, evidence, clauses } = {}) {
       if (!id) throw new Error('id is required')
       if (!['meets', 'fails'].includes(result)) throw new Error('result must be meets or fails')
       if (!evidence || !String(evidence).trim()) {
         throw new Error('evidence is required: what you ran, and what each acceptance clause showed')
+      }
+      if (clauses === undefined) {
+        throw new Error('clauses are required: rule each acceptance clause met | not_met | mismatch | not_evaluated')
+      }
+      const problem = clauseProblem(clauses)
+      if (problem) throw new Error(problem)
+      if (clauses.length === 0) throw new Error('clauses needs at least one ruling, one per acceptance clause')
+      const ruled = clauses.map((c) => ({ clause: c.clause.trim(), outcome: c.outcome, evidence: c.evidence.trim() }))
+      const short = ruled.filter((c) => c.outcome !== 'met')
+      if (result === 'meets' && short.length) {
+        throw new Error(`meets needs every clause met; ${short.map((c) => `"${c.clause}" is ${c.outcome}`).join(', ')}`)
       }
       const { root, slug } = await where(project)
 
@@ -303,14 +320,16 @@ export function createTools({ registryFile, cwd }) {
           }
           const now = stamp()
           if (!Array.isArray(card.verdicts)) card.verdicts = []
-          card.verdicts.push({ result, at: now, evidence: String(evidence) })
-          card.notes.push({ author: AUTHOR, at: now, text: `VERDICT: ${result}\n\n${String(evidence)}` })
+          card.verdicts.push({ result, at: now, evidence: String(evidence), clauses: ruled })
+          card.notes.push({ author: AUTHOR, at: now, text: `VERDICT: ${result}\n\n${String(evidence)}\n\n${clauseLines(ruled)}` })
           if (result === 'meets') {
             card.column = landing
             card.columnSince = now
           }
           card.updatedAt = now
-          return { id, result, column: card.column }
+          // The count is how a caller tells this bridge from one started before
+          // clauses existed: an old server's schema drops the field silently.
+          return { id, result, column: card.column, clauses: ruled.length }
         },
       })
       return { project: slug, ...outcome }

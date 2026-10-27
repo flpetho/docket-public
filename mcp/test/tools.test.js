@@ -445,12 +445,13 @@ test('THE RAW CARD: a card that predates this field has no todos key at all, and
 // the point is that a forged verdict is a deliberate, visible call, never a
 // slip. The owner's drag in the UI never reaches this code.
 
+const met = (clause) => ({ clause, outcome: 'met', evidence: `checked ${clause}` })
 const loopCard = (over = {}) => card({ column: 'loop', columnSince: '2026-08-20T00:00:00.000Z', ...over })
 
 test('a meets verdict records itself, writes the note, and moves the card to In review', async () => {
   const s = await sandbox({ cards: [loopCard()] })
-  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'npm test: 535/535; clause 1 checked by probe' })
-  assert.deepEqual(result, { project: 'my-project', id: 'c1', result: 'meets', column: 'review', rev: 4 })
+  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'npm test: 535/535; clause 1 checked by probe', clauses: [met('clause 1')] })
+  assert.deepEqual(result, { project: 'my-project', id: 'c1', result: 'meets', column: 'review', clauses: 1, rev: 4 })
   const [saved] = (await s.board()).cards
   assert.equal(saved.column, 'review')
   assert.equal(saved.verdicts.length, 1)
@@ -463,7 +464,7 @@ test('a meets verdict records itself, writes the note, and moves the card to In 
 
 test('a fails verdict is recorded and the card stays in Loop', async () => {
   const s = await sandbox({ cards: [loopCard()] })
-  const result = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'clause 2 not met: no phone check' })
+  const result = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'clause 2 not met: no phone check', clauses: [met('clause 1')] })
   assert.equal(result.column, 'loop')
   const [saved] = (await s.board()).cards
   assert.equal(saved.column, 'loop')
@@ -474,16 +475,16 @@ test('a fails verdict is recorded and the card stays in Loop', async () => {
 
 test('verdicts accumulate, so strikes can be counted later', async () => {
   const s = await sandbox({ cards: [loopCard()] })
-  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'one' })
-  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'two' })
-  await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'three' })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'one', clauses: [met('clause 1')] })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'two', clauses: [met('clause 1')] })
+  await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'three', clauses: [met('clause 1')] })
   const [saved] = (await s.board()).cards
   assert.deepEqual(saved.verdicts.map((v) => v.result), ['fails', 'fails', 'meets'])
 })
 
 test('a verdict is refused on a card that is not in Loop, and nothing is written', async () => {
   const s = await sandbox({ cards: [card({ column: 'next' })] })
-  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'x' }), /only for a card in Loop/)
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'x', clauses: [met('clause 1')] }), /only for a card in Loop/)
   const doc = await s.board()
   assert.equal(doc.rev, 3)
   assert.equal(doc.cards[0].verdicts, undefined)
@@ -491,9 +492,9 @@ test('a verdict is refused on a card that is not in Loop, and nothing is written
 
 test('a verdict needs a result of meets or fails, and evidence', async () => {
   const s = await sandbox({ cards: [loopCard()] })
-  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'pass', evidence: 'x' }), /meets or fails/)
-  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'meets', evidence: '   ' }), /evidence is required/)
-  await assert.rejects(s.tools.verdict({ id: 'nope', result: 'meets', evidence: 'x' }), /no card "nope"/)
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'pass', evidence: 'x', clauses: [met('clause 1')] }), /meets or fails/)
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'meets', evidence: '   ', clauses: [met('clause 1')] }), /evidence is required/)
+  await assert.rejects(s.tools.verdict({ id: 'nope', result: 'meets', evidence: 'x', clauses: [met('clause 1')] }), /no card "nope"/)
   assert.equal((await s.board()).rev, 3)
 })
 
@@ -522,8 +523,61 @@ test('update still moves a card that is not in Loop to In review', async () => {
 
 test('a card presents its verdicts across the bridge, and none as an empty list', () => {
   const withOne = presentCard(normalizeCard(loopCard({ verdicts: [{ result: 'fails', at: 'x', evidence: 'e' }] })), '/r')
-  assert.deepEqual(withOne.verdicts, [{ result: 'fails', at: 'x', evidence: 'e' }])
+  assert.deepEqual(withOne.verdicts, [{ result: 'fails', at: 'x', evidence: 'e', clauses: [] }])
   assert.deepEqual(presentCard(normalizeCard(loopCard()), '/r').verdicts, [])
+})
+
+// ---- clauses: the gate rules each acceptance clause ----------------------
+// 2026-10-27, from the Night Shift review. met | not_met | mismatch |
+// not_evaluated. mismatch is evidence that arrived but is not the evidence the
+// clause asked for — the costume work the gate exists to catch, now named.
+
+test('a verdict records its clauses on the card and lists them in the note', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const clauses = [met('one'), { clause: 'two', outcome: 'mismatch', evidence: 'an assertion, not the screenshot asked for' }]
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'Clause two got the wrong kind of proof.', clauses })
+  const [saved] = (await s.board()).cards
+  assert.deepEqual(saved.verdicts[0].clauses, clauses)
+  const note = saved.notes.at(-1).text
+  assert.match(note, /^VERDICT: fails\n\nClause two got the wrong kind of proof\.\n\n/, 'the triage sentence still leads')
+  assert.match(note, /met — one: checked one\nmismatch — two: an assertion/)
+})
+
+test('meets is refused unless every clause is met, and nothing is written', async () => {
+  for (const outcome of ['not_met', 'mismatch', 'not_evaluated']) {
+    const s = await sandbox({ cards: [loopCard()] })
+    const clauses = [met('one'), { clause: 'two', outcome, evidence: 'e' }]
+    await assert.rejects(s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'x', clauses }), new RegExp(`meets.*${outcome}`), outcome)
+    const doc = await s.board()
+    assert.equal(doc.rev, 3, `${outcome}: nothing written`)
+    assert.equal(doc.cards[0].column, 'loop')
+  }
+})
+
+test('fails is allowed with every clause met — the letter met, the point missed', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const result = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'Every clause passes; the feature is a stub.', clauses: [met('one')] })
+  assert.equal(result.column, 'loop')
+})
+
+test('a verdict with no clauses, or malformed ones, is refused and writes nothing', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x' }), /clauses/)
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: [] }), /at least one/)
+  await assert.rejects(s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: [{ clause: 'c', outcome: 'pass', evidence: 'e' }] }), /not_evaluated/)
+  assert.equal((await s.board()).rev, 3)
+})
+
+test('only the three clause fields are stored, trimmed', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'x', clauses: [{ clause: ' one ', outcome: 'met', evidence: ' e ', extra: 'dropped' }] })
+  assert.deepEqual((await s.board()).cards[0].verdicts[0].clauses, [{ clause: 'one', outcome: 'met', evidence: 'e' }])
+})
+
+test('a card presents each verdict\'s clauses, and an empty list for a verdict from before them', () => {
+  const clauses = [met('one')]
+  const presented = presentCard(normalizeCard(loopCard({ verdicts: [{ result: 'fails', at: 'x', evidence: 'e' }, { result: 'meets', at: 'y', evidence: 'e', clauses }] })), '/r')
+  assert.deepEqual(presented.verdicts.map((v) => v.clauses), [[], clauses])
 })
 
 /** A board whose columns after Loop are not called review and done. */
@@ -552,7 +606,7 @@ test('update may return a Loop card to any column before it', async () => {
 
 test('meets lands in the column after Loop when the board has no review column', async () => {
   const s = await renamedSandbox([loopCard()])
-  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'ran it' })
+  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'ran it', clauses: [met('clause 1')] })
   assert.equal(result.column, 'checking')
 })
 

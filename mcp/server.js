@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 
 import { createTools } from './src/tools.js'
+import { CLAUSE_OUTCOMES } from '../board/ui/verdict.js'
 
 /**
  * The only file that knows about the MCP protocol. Everything it does is a thin
@@ -132,10 +133,21 @@ server.registerTool(
     inputSchema: {
       project,
       id: z.string().describe('Card id, from docket_board. Must be in Loop.'),
-      result: z.enum(['meets', 'fails']).describe('meets: every acceptance clause verified firsthand. fails: anything less.'),
+      result: z.enum(['meets', 'fails']).describe('meets: every clause met, verified firsthand. fails: anything less — including work that meets the letter and misses the point.'),
       evidence: z
         .string()
-        .describe('What you ran and what each acceptance clause showed. Lead with one sentence a phone can triage from.'),
+        .describe('What you ran, and what it showed. Lead with one sentence a phone can triage from.'),
+      clauses: z
+        .array(
+          z.object({
+            clause: z.string().describe('The acceptance clause, as the card states it.'),
+            outcome: z
+              .enum(CLAUSE_OUTCOMES)
+              .describe('met: verified firsthand. not_met: checked, not true. mismatch: evidence arrived but not the kind the clause asked for. not_evaluated: could not be checked — never a pass.'),
+            evidence: z.string().describe('What you saw for this clause, or why it could not be checked.'),
+          }),
+        )
+        .describe('One ruling per acceptance clause. meets is refused unless every outcome is met.'),
     },
   },
   run((args) => tools.verdict(args)),

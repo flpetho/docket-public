@@ -89,8 +89,9 @@ flowchart TB
    `Acceptance` and `Verify with`. Without the first there's no way to know when to stop; without
    the second, "done" is a guess.
 6. **Work.** Claude works the column top-down, on a branch, one card at a time.
-7. **Gate.** A separate agent re-runs the `Verify with` command itself, checks each clause
-   independently, and rules with `docket_verdict`: recorded on the card and as a note.
+7. **Gate.** A separate agent re-runs the `Verify with` command itself, rules each clause
+   `met`, `not_met`, `mismatch` or `not_evaluated`, and records it with `docket_verdict`,
+   on the card and as a note. Anything short of every clause met cannot pass.
 8. **Review.** meets → *In review* and a PR with the verdict attached. **You merge. Always.**
    The verdict is the only way the bridge moves a Loop card there — `docket_update` refuses.
 
