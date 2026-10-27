@@ -31,7 +31,7 @@ export const BRIEF_FIELDS = [
     key: 'acceptance',
     label: 'Acceptance',
     required: true,
-    hint: 'What a skeptic verifies firsthand. Could a stub pass it? Then tighten it.',
+    hint: 'What a skeptic verifies firsthand: success, refusal, recovery, teardown. Could a stub pass it? Then tighten it.',
     weak: 'The move works and nothing is lost.',
     example:
       '1. In a card\'s panel on board A, choosing B in the Board dropdown closes the panel, the status line says "moved to B", the card is gone from A and sits in B\'s first column with its notes, tags, flag and attachments intact.\n2. A test fails the source write after the target write and asserts the card is on BOTH boards — a duplicate, never a loss.',

@@ -62,6 +62,16 @@ thing.
   verified by 7×8×9" gets you a bare multiplier, because a bare multiplier passes. A clause
   a stub could satisfy is a thin clause. Say so and escalate, even when you are confident
   you know what was meant.
+- **Prove the proof can run, before working anything.** Try each card's `Verify with`
+  command once. A proof that cannot run where the run runs makes the night loop until it
+  is over. Tell the two kinds of red apart:
+  - *cannot run*: a missing tool, a refused connection (the daemon on :7777 is down), an
+    expired token, Chrome not found. Move the card to Waiting on you with the exact error.
+  - *runs and fails*: the suite reports `not ok` on the behaviour the card is about to
+    build. That is the expected red before the work. Start it.
+- **Bound every wait.** Give each install, build and browser probe a timeout. When one
+  times out, the checks that depend on it are `not_evaluated`, said in the note. Never
+  start the same hung command again.
 - A card needing the owner's taste or a product ruling is not a Loop card even with a
   perfect brief. Escalate it and say why.
 
