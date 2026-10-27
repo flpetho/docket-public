@@ -1,3 +1,5 @@
+import { LOOP_COLUMN } from './brief.js'
+
 /**
  * Reading the gate's verdict out of a card's note thread.
  *
@@ -91,4 +93,50 @@ const oneLine = (text) => String(text).replace(/\s+/g, ' ').trim()
 /** One line per clause, outcome first, so a column of outcomes scans down the left. */
 export function clauseLines(clauses) {
   return clauses.map((c) => `${c.outcome} — ${oneLine(c.clause)}: ${oneLine(c.evidence)}`).join('\n')
+}
+
+/** How many times a card may fail the gate in one stay in Loop. */
+export const STRIKES = 3
+
+/**
+ * The card's strikes: fails verdicts since it last entered Loop. Counted from
+ * the verdicts rather than kept as a counter, so it cannot drift from them, and
+ * the owner moving a card back into Loop after an escalation starts a fresh
+ * count. 0 for a card outside Loop.
+ */
+export function strikesFor(card) {
+  if (card?.column !== LOOP_COLUMN) return 0
+  const since = Date.parse(card.columnSince) || 0
+  return (card.verdicts ?? []).filter((v) => v?.result === 'fails' && (Date.parse(v.at) || 0) >= since).length
+}
+
+/**
+ * The chip's word: "failed 2/3" for a failed card still in Loop, otherwise the
+ * plain word. Shared by the live face and the snapshot so they cannot differ.
+ */
+export function chipWord(ruling, card) {
+  const strikes = ruling.verdict === 'fails' ? strikesFor(card) : 0
+  return { word: strikes ? `${ruling.word} ${strikes}/${STRIKES}` : ruling.word, strikes }
+}
+
+/**
+ * The note left when the third strike lands. Leads with one sentence a phone
+ * can triage from, then which clauses kept failing, most often first.
+ */
+export function strikesNote(card, { moved }) {
+  const since = Date.parse(card.columnSince) || 0
+  const struck = (card.verdicts ?? []).filter((v) => v?.result === 'fails' && (Date.parse(v.at) || 0) >= since)
+  const entered = card.columnSince ? String(card.columnSince).slice(0, 10) : 'an unknown date'
+  const lead = moved
+    ? `Three strikes: failed the gate ${struck.length} times since entering Loop on ${entered}, so it is waiting on you.`
+    : `Three strikes: failed the gate ${struck.length} times since entering Loop on ${entered}. This board has no Waiting on you column before Loop, so it stays in Loop: stop working it.`
+  const counts = new Map()
+  for (const verdict of struck) {
+    for (const c of verdict.clauses ?? []) {
+      if (c.outcome !== 'met') counts.set(c.clause, (counts.get(c.clause) ?? 0) + 1)
+    }
+  }
+  const lines = [...counts].sort((a, b) => b[1] - a[1]).map(([clause, n]) => `${clause} — ${n} of ${struck.length}`)
+  const body = lines.length ? `Kept failing:\n${lines.join('\n')}` : 'No clauses were recorded on these verdicts; read the VERDICT notes above.'
+  return `${lead}\n\n${body}`
 }

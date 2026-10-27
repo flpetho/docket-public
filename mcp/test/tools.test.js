@@ -580,6 +580,79 @@ test('a card presents each verdict\'s clauses, and an empty list for a verdict f
   assert.deepEqual(presented.verdicts.map((v) => v.clauses), [[], clauses])
 })
 
+// ---- three strikes, counted by the board ---------------------------------
+// The third fails since the card entered Loop moves it to Waiting on you with
+// the history, whether or not the session that failed it remembers the first two.
+
+const failing = (clause) => [{ clause, outcome: 'not_met', evidence: `${clause} did not hold` }]
+
+test('the first two fails keep the card in Loop and report the count', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const one = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  const two = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  assert.deepEqual([one.strikes, one.column, two.strikes, two.column], [1, 'loop', 2, 'loop'])
+})
+
+test('THE THIRD STRIKE moves the card to Waiting on you with a note naming what kept failing', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('the panel closes') })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: [met('the panel closes'), ...failing('the phone fits')] })
+  const third = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('the phone fits') })
+  assert.equal(third.strikes, 3)
+  assert.equal(third.column, 'waiting')
+  const [saved] = (await s.board()).cards
+  assert.equal(saved.column, 'waiting')
+  assert.notEqual(saved.columnSince, '2026-08-20T00:00:00.000Z', 'the move restarts the column clock')
+  const note = saved.notes.at(-1)
+  assert.equal(note.author, 'claude')
+  assert.match(note.text, /^Three strikes: /, 'leads with a sentence a phone can triage from')
+  assert.match(note.text, /the phone fits — 2 of 3/)
+  assert.match(note.text, /the panel closes — 1 of 3/)
+  assert.match(saved.notes.at(-2).text, /^VERDICT: fails/, 'the verdict note is still written first')
+})
+
+test('fails from before the card entered Loop are not strikes', async () => {
+  const old = [1, 2].map((n) => ({ result: 'fails', at: `2026-08-1${n}T00:00:00.000Z`, evidence: 'old', clauses: failing('old') }))
+  const s = await sandbox({ cards: [loopCard({ verdicts: old })] })
+  const result = await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  assert.deepEqual([result.strikes, result.column], [1, 'loop'])
+})
+
+test('a meets after two strikes still passes the gate', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  const result = await s.tools.verdict({ id: 'c1', result: 'meets', evidence: 'x', clauses: [met('a')] })
+  assert.equal(result.column, 'review')
+})
+
+test('on a board with no waiting column, the third strike stays in Loop and says so', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const config = defaultConfig('My Project')
+  config.columns = config.columns.filter((c) => c.key !== 'waiting')
+  await writeFile(join(s.root, '.docket', 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
+  for (let i = 0; i < 3; i++) await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  const [saved] = (await s.board()).cards
+  assert.equal(saved.column, 'loop')
+  assert.match(saved.notes.at(-1).text, /^Three strikes: .*no Waiting on you column/s)
+})
+
+test('a Waiting column placed after Loop is not an escape past the gate', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const config = defaultConfig('My Project')
+  const waiting = config.columns.find((c) => c.key === 'waiting')
+  config.columns = [...config.columns.filter((c) => c.key !== 'waiting'), waiting]
+  await writeFile(join(s.root, '.docket', 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
+  for (let i = 0; i < 3; i++) await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  assert.equal((await s.board()).cards[0].column, 'loop')
+})
+
+test('a Loop card presents its strikes; a card elsewhere presents none', () => {
+  const v = { result: 'fails', at: '2026-09-01T00:00:00.000Z', evidence: 'e' }
+  assert.equal(presentCard(normalizeCard(loopCard({ verdicts: [v, v] })), '/r').strikes, 2)
+  assert.equal(presentCard(normalizeCard(card({ verdicts: [v] })), '/r').strikes, undefined)
+})
+
 /** A board whose columns after Loop are not called review and done. */
 async function renamedSandbox(cards) {
   const s = await sandbox({ cards })

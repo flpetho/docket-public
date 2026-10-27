@@ -97,7 +97,7 @@ tight on the outcome and loose on the route.
 |---|---|
 | **Work on a branch. Never the default branch** | The run ends at review-requested: push the branch, open a PR with the verdict attached, never merge |
 | **One card at a time, top of the column down** | The order is the owner's priority. Do not cherry-pick the easy one |
-| **Three strikes, then stop** | Fail the same card three times and it goes to Waiting on you with what you tried. Six hours re-running one broken approach is the failure mode to design against |
+| **Three strikes, then stop** | The board counts them: the third `fails` verdict since a card entered Loop moves it to Waiting on you, with a note naming the clauses that kept failing, and the card face shows `failed 2/3`. Do not start the card again. Six hours re-running one broken approach is the failure mode to design against |
 | **Ambiguity escalates, never guesses** | A wrong guess at 2am costs more than a morning's wait |
 | **Re-read the card's notes between steps** | The owner can steer a running task by adding a note. A corrective sentence is cheap; a killed run wastes the night |
 | **A blocker escalates and stops** | An expired credential at 1am is a real event. Note it, move on, do not thrash. Silence is not a terminal state |
