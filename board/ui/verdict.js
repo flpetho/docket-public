@@ -1,3 +1,5 @@
+import { LOOP_COLUMN } from './brief.js'
+
 /**
  * Reading the gate's verdict out of a card's note thread.
  *
@@ -103,9 +105,18 @@ export const STRIKES = 3
  * count. 0 for a card outside Loop.
  */
 export function strikesFor(card) {
-  if (card?.column !== 'loop') return 0
+  if (card?.column !== LOOP_COLUMN) return 0
   const since = Date.parse(card.columnSince) || 0
   return (card.verdicts ?? []).filter((v) => v?.result === 'fails' && (Date.parse(v.at) || 0) >= since).length
+}
+
+/**
+ * The chip's word: "failed 2/3" for a failed card still in Loop, otherwise the
+ * plain word. Shared by the live face and the snapshot so they cannot differ.
+ */
+export function chipWord(ruling, card) {
+  const strikes = ruling.verdict === 'fails' ? strikesFor(card) : 0
+  return { word: strikes ? `${ruling.word} ${strikes}/${STRIKES}` : ruling.word, strikes }
 }
 
 /**
@@ -118,7 +129,7 @@ export function strikesNote(card, { moved }) {
   const entered = card.columnSince ? String(card.columnSince).slice(0, 10) : 'an unknown date'
   const lead = moved
     ? `Three strikes: failed the gate ${struck.length} times since entering Loop on ${entered}, so it is waiting on you.`
-    : `Three strikes: failed the gate ${struck.length} times since entering Loop on ${entered}. This board has no Waiting on you column, so it stays in Loop: stop working it.`
+    : `Three strikes: failed the gate ${struck.length} times since entering Loop on ${entered}. This board has no Waiting on you column before Loop, so it stays in Loop: stop working it.`
   const counts = new Map()
   for (const verdict of struck) {
     for (const c of verdict.clauses ?? []) {

@@ -637,6 +637,16 @@ test('on a board with no waiting column, the third strike stays in Loop and says
   assert.match(saved.notes.at(-1).text, /^Three strikes: .*no Waiting on you column/s)
 })
 
+test('a Waiting column placed after Loop is not an escape past the gate', async () => {
+  const s = await sandbox({ cards: [loopCard()] })
+  const config = defaultConfig('My Project')
+  const waiting = config.columns.find((c) => c.key === 'waiting')
+  config.columns = [...config.columns.filter((c) => c.key !== 'waiting'), waiting]
+  await writeFile(join(s.root, '.docket', 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
+  for (let i = 0; i < 3; i++) await s.tools.verdict({ id: 'c1', result: 'fails', evidence: 'x', clauses: failing('a') })
+  assert.equal((await s.board()).cards[0].column, 'loop')
+})
+
 test('a Loop card presents its strikes; a card elsewhere presents none', () => {
   const v = { result: 'fails', at: '2026-09-01T00:00:00.000Z', evidence: 'e' }
   assert.equal(presentCard(normalizeCard(loopCard({ verdicts: [v, v] })), '/r').strikes, 2)

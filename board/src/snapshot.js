@@ -35,7 +35,7 @@ import { briefWarning, BRIEF_FIELDS, hasBriefHeadings, parseBrief } from '../ui/
 import { splitNote } from '../ui/note-lead.js'
 import { columnAge, linkPattern, relativeAge } from '../ui/render.js'
 import { formatDuration, formatSession, totalMs } from '../ui/time.js'
-import { latestVerdict, verdictDate } from '../ui/verdict.js'
+import { chipWord, latestVerdict, verdictDate } from '../ui/verdict.js'
 import { tagColor } from '../ui/tag-color.js'
 import { todoProgress } from '../ui/todos.js'
 
@@ -230,8 +230,9 @@ function cardHtml(card, { config, nowMs }) {
   const ruling = latestVerdict(card.notes ?? [])
   if (ruling) {
     const date = verdictDate(ruling.at)
+    const { word } = chipWord(ruling, card)
     marks.push(
-      `<span class="verdict" data-verdict="${escapeHtml(ruling.verdict)}">${escapeHtml(date ? `${ruling.word} · ${date}` : ruling.word)}</span>`,
+      `<span class="verdict" data-verdict="${escapeHtml(ruling.verdict)}">${escapeHtml(date ? `${word} · ${date}` : word)}</span>`,
     )
   }
   if (card.flag) marks.push('<span class="flag micro">!</span>')

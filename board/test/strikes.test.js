@@ -36,3 +36,11 @@ test('a card outside Loop has no strikes, and neither does one with no verdicts'
 test('a Loop card with no columnSince counts every fails', () => {
   assert.equal(strikesFor(loop([fails('2026-01-01T00:00:00.000Z'), fails('2026-10-27T11:00:00.000Z')], null)), 2)
 })
+
+test('the chip word carries the strikes only for a failed card in Loop', async () => {
+  const { chipWord } = await import('../ui/verdict.js')
+  const card = loop([fails('2026-10-27T11:00:00.000Z'), fails('2026-10-27T12:00:00.000Z')])
+  assert.deepEqual(chipWord({ verdict: 'fails', word: 'failed' }, card), { word: 'failed 2/3', strikes: 2 })
+  assert.deepEqual(chipWord({ verdict: 'meets', word: 'met' }, card), { word: 'met', strikes: 0 })
+  assert.deepEqual(chipWord({ verdict: 'fails', word: 'failed' }, { ...card, column: 'waiting' }), { word: 'failed', strikes: 0 })
+})

@@ -330,7 +330,9 @@ export function createTools({ registryFile, cwd }) {
           // or not the session that failed the card remembers the first two.
           const strikes = result === 'fails' ? strikesFor(card) : 0
           if (strikes >= STRIKES) {
-            const moved = keys.includes('waiting')
+            // Only to a Waiting column BEFORE Loop: a board that put it after would
+            // otherwise let a failed card walk past the gate.
+            const moved = keys.includes('waiting') && !pastTheGate(keys, 'waiting')
             card.notes.push({ author: AUTHOR, at: now, text: strikesNote(card, { moved }) })
             if (moved) {
               card.column = 'waiting'
