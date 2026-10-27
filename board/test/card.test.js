@@ -188,3 +188,24 @@ test('a malformed verdict is refused by validation', () => {
   assert.ok(validateCard({ ...base, verdicts: [{ result: 'maybe', at: 'a', evidence: 'e' }] }, ['loop']).length)
   assert.ok(validateCard({ ...base, verdicts: 'meets' }, ['loop']).length)
 })
+
+// ---- clause outcomes on a verdict ------------------------------------------
+// 2026-10-27, from the Night Shift review: the gate rules each acceptance
+// clause with one of four tokens. A verdict recorded before then has no
+// clauses, and must keep validating — it is on real boards.
+
+test('a verdict from before clauses existed still validates', () => {
+  const base = normalizeCard({ id: 'x', title: 't', column: 'loop' })
+  assert.deepEqual(validateCard({ ...base, verdicts: [{ result: 'fails', at: 'a', evidence: 'e' }] }, ['loop']), [])
+})
+
+test('a verdict with well-formed clauses validates, one with a bad token does not', () => {
+  const base = normalizeCard({ id: 'x', title: 't', column: 'loop' })
+  const verdict = (clauses) => ({ ...base, verdicts: [{ result: 'fails', at: 'a', evidence: 'e', clauses }] })
+  const good = ['met', 'not_met', 'mismatch', 'not_evaluated'].map((outcome) => ({ clause: 'c', outcome, evidence: 'e' }))
+  assert.deepEqual(validateCard(verdict(good), ['loop']), [])
+  assert.ok(validateCard(verdict([{ clause: 'c', outcome: 'pass', evidence: 'e' }]), ['loop']).length)
+  assert.ok(validateCard(verdict([{ clause: 'c', outcome: 'met' }]), ['loop']).length, 'evidence is required')
+  assert.ok(validateCard(verdict('met'), ['loop']).length, 'clauses must be a list')
+  assert.ok(validateCard(verdict([null]), ['loop']).length)
+})

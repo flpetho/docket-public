@@ -100,6 +100,11 @@ fresh context, no edit tools, re-runs the `Verify with` command itself, checks e
 `Acceptance` clause independently, and rules with `docket_verdict`, which records the verdict
 on the card and writes it to the thread as a `VERDICT: meets | fails` note.
 
+Each clause gets one of four outcomes: `met` (verified firsthand), `not_met` (checked, not
+true), `mismatch` (evidence arrived, but not the kind the clause asked for: an assertion
+where it promised a screenshot) or `not_evaluated` (could not be checked). The tool refuses
+**meets** unless every clause is `met`, because an unknown is never a pass.
+
 - **meets** → the card moves to *In review*.
 - **fails** → the card stays in Loop with what would change the verdict.
 

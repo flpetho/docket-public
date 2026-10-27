@@ -54,3 +54,41 @@ export function verdictDate(iso) {
     .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     .toUpperCase()
 }
+
+/**
+ * How the gate rules one acceptance clause. Since 2026-10-27, from the Night
+ * Shift review:
+ *
+ * - met: verified firsthand, with evidence.
+ * - not_met: checked, and it is not true.
+ * - mismatch: evidence arrived, but not the evidence the clause asked for — an
+ *   assertion where a screenshot was promised. The costume work the gate exists
+ *   to catch, named so it cannot hide inside a paragraph.
+ * - not_evaluated: could not be checked. Never a pass.
+ *
+ * Shared by the bridge (which refuses a bad verdict) and card validation (which
+ * refuses a bad stored one), so the two cannot disagree on the vocabulary.
+ */
+export const CLAUSE_OUTCOMES = ['met', 'not_met', 'mismatch', 'not_evaluated']
+
+const filled = (value) => typeof value === 'string' && value.trim() !== ''
+
+/** What is wrong with a list of clause rulings, or null when nothing is. */
+export function clauseProblem(clauses) {
+  if (!Array.isArray(clauses)) return 'clauses must be a list of {clause, outcome, evidence}'
+  for (const [index, item] of clauses.entries()) {
+    const at = `clause ${index + 1}`
+    if (!item || typeof item !== 'object') return `${at} must be {clause, outcome, evidence}`
+    if (!filled(item.clause)) return `${at} needs its text: the acceptance clause being ruled on`
+    if (!CLAUSE_OUTCOMES.includes(item.outcome)) return `${at} outcome must be ${CLAUSE_OUTCOMES.join(' | ')}`
+    if (!filled(item.evidence)) return `${at} needs evidence: what you saw, or why it could not be checked`
+  }
+  return null
+}
+
+const oneLine = (text) => String(text).replace(/\s+/g, ' ').trim()
+
+/** One line per clause, outcome first, so a column of outcomes scans down the left. */
+export function clauseLines(clauses) {
+  return clauses.map((c) => `${c.outcome} — ${oneLine(c.clause)}: ${oneLine(c.evidence)}`).join('\n')
+}

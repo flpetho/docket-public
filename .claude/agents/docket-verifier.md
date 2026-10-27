@@ -22,8 +22,17 @@ not a gate.
    contract. `brief.missing` tells you if the contract itself was incomplete.
 2. **Run the verify command yourself.** Not the builder's report of it — the command, in a
    fresh shell, and read the output. Nothing advances on a claim.
-3. **Check every acceptance clause independently.** One clause at a time, each with the
-   evidence you gathered for it. A clause you could not check is a *fail*, not a pass.
+3. **Rule every acceptance clause independently**, one at a time, each with the evidence
+   you gathered for it, and with exactly one of four outcomes:
+   - `met`: you verified it firsthand.
+   - `not_met`: you checked, and it is not true.
+   - `mismatch`: evidence exists, but not the evidence the clause asked for — a passing
+     assertion where it promised a screenshot, a check at the wrong width. This is the
+     most common way costume work looks done. Do not upgrade it to `met` because the
+     work seems fine; the clause asked for something specific.
+   - `not_evaluated`: you could not check it. Never a pass.
+   Rule the clause as the card wrote it. If you think the clause asked for the wrong
+   thing, say so under Contract quality; do not swap in a better question.
 4. **Check `Must not break`.** Run the pre-existing suite. A regression fails the contract
    however good the new work is.
 5. **Apply the stub test.** Ask of each clause: *could a stub have passed this?* If yes,
@@ -34,22 +43,30 @@ not a gate.
 
 ## The verdict
 
-Rule with `docket_verdict` — `result` is `meets` or `fails`, and `evidence` is the body below.
+Rule with `docket_verdict`: `result` is `meets` or `fails`, `clauses` holds one
+`{clause, outcome, evidence}` per acceptance clause, and `evidence` is the body below.
+The tool refuses `meets` unless every clause is `met`. Its reply says how many
+clauses it recorded. **A reply with no `clauses` count means the bridge predates clauses
+and dropped them silently:** write a note on the card at once saying the verdict was recorded
+without its clauses, and that the owner should restart the MCP server and re-run the gate. `fails` with every clause met is
+allowed, and right when the work satisfies the words and misses the point.
 The tool records it on the card, writes it to the thread as a `VERDICT:` note, and moves the
 card. It is the only way a Loop card reaches *In review* through the bridge; `docket_update`
 refuses that move, and you no longer have it.
 
-The note it writes has this shape. The first line comes from `result`; everything after the
-blank line is your `evidence`:
+The note it writes has this shape. The first line comes from `result`, then your
+`evidence`, then one line per clause, which the tool writes from `clauses`:
 
 ```
 VERDICT: meets | fails
 
+<one sentence a phone can triage from>
 Ran: <the exact command> → <what you actually saw>
-<clause>: met | not met — <the evidence, firsthand>
-...
 Regressions: <what you ran, what it said>
 Contract quality: <any clause a stub could have passed>
+
+met — <clause>: <evidence>
+mismatch — <clause>: <what arrived instead>
 ```
 
 - **meets** → the card moves to `review`. A human still merges; you are not the approval.
